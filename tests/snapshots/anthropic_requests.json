@@ -1,0 +1,124 @@
+{
+  "imagen_base64": {
+    "messages": [
+      {
+        "content": [
+          {
+            "text": "Qué es esto",
+            "type": "text"
+          },
+          {
+            "source": {
+              "data": "iVBORw0KGgo=",
+              "media_type": "image/png",
+              "type": "base64"
+            },
+            "type": "image"
+          }
+        ],
+        "role": "user"
+      }
+    ],
+    "tools": []
+  },
+  "system_como_lista_de_bloques": {
+    "messages": [
+      {
+        "content": "Bloque uno",
+        "role": "system"
+      },
+      {
+        "content": "Hola",
+        "role": "user"
+      }
+    ],
+    "tools": []
+  },
+  "texto_simple_con_system": {
+    "messages": [
+      {
+        "content": "Eres un agente.",
+        "role": "system"
+      },
+      {
+        "content": "Hola",
+        "role": "user"
+      }
+    ],
+    "tools": []
+  },
+  "tool_result_fallido": {
+    "messages": [
+      {
+        "content": "Falla",
+        "role": "user"
+      },
+      {
+        "content": "",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{}",
+              "name": "terminal"
+            },
+            "id": "toolu_err",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "boom",
+        "is_error": true,
+        "role": "tool",
+        "tool_call_id": "toolu_err"
+      }
+    ],
+    "tools": []
+  },
+  "tool_use_y_tool_result": {
+    "messages": [
+      {
+        "content": "Ejecuta ls",
+        "role": "user"
+      },
+      {
+        "content": "Voy a ejecutarlo",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"command\":\"ls\"}",
+              "name": "terminal"
+            },
+            "id": "toolu_1",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "a.txt",
+        "is_error": false,
+        "role": "tool",
+        "tool_call_id": "toolu_1"
+      }
+    ],
+    "tools": [
+      {
+        "function": {
+          "description": "Ejecuta un comando",
+          "name": "terminal",
+          "parameters": {
+            "properties": {
+              "command": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  }
+}

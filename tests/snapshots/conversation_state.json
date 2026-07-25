@@ -1,0 +1,535 @@
+{
+  "bloques_de_contenido_en_lista": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Parte dos",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI"
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Parte uno",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "Respondo"
+          }
+        }
+      ]
+    }
+  },
+  "historial_con_tool_sin_spec_declarada": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Turno dos",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI",
+          "userInputMessageContext": {
+            "tools": [
+              {
+                "toolSpecification": {
+                  "description": "Otra",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {},
+                      "type": "object"
+                    }
+                  },
+                  "name": "herramienta_nueva"
+                }
+              },
+              {
+                "toolSpecification": {
+                  "description": "Tool",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {},
+                      "type": "object"
+                    }
+                  },
+                  "name": "herramienta_antigua"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Turno uno",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "",
+            "toolUses": [
+              {
+                "input": {},
+                "name": "herramienta_antigua",
+                "toolUseId": "call_old"
+              }
+            ]
+          }
+        },
+        {
+          "userInputMessage": {
+            "content": "Tool results provided.",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI",
+            "userInputMessageContext": {
+              "toolResults": [
+                {
+                  "content": [
+                    {
+                      "text": "resultado"
+                    }
+                  ],
+                  "status": "success",
+                  "toolUseId": "call_old"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "Listo"
+          }
+        }
+      ]
+    }
+  },
+  "historial_terminado_en_assistant": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Please proceed with the task.",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI"
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Pregunta",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "Respuesta previa"
+          }
+        }
+      ]
+    }
+  },
+  "imagen_en_mensaje_actual": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Describe la imagen",
+          "images": [
+            {
+              "format": "png",
+              "source": {
+                "bytes": "iVBORw0KGgo="
+              }
+            }
+          ],
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI"
+        }
+      }
+    }
+  },
+  "sin_mensajes": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Hello",
+          "modelId": "auto",
+          "origin": "KIRO_CLI"
+        }
+      }
+    }
+  },
+  "solo_usuario": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Hola",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI"
+        }
+      }
+    }
+  },
+  "system_colapsado_en_primer_usuario": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Segundo turno",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI"
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Prompt externo\n\nEres un agente.\n\nPrimer turno",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "Respuesta"
+          }
+        }
+      ]
+    }
+  },
+  "tool_call_con_continuacion_forzada": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Tool results provided.\n\nContinue executing the user's task now. Do not end the turn after describing a next step. If another tool or subagent is needed, call it in this response. Only stop when the requested task is complete or user input is required.",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI",
+          "userInputMessageContext": {
+            "toolResults": [
+              {
+                "content": [
+                  {
+                    "text": "a.txt"
+                  }
+                ],
+                "status": "success",
+                "toolUseId": "call_1"
+              }
+            ],
+            "tools": [
+              {
+                "toolSpecification": {
+                  "description": "Tool",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {},
+                      "type": "object"
+                    }
+                  },
+                  "name": "terminal"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Lista el directorio",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "",
+            "toolUses": [
+              {
+                "input": {
+                  "command": "ls"
+                },
+                "name": "terminal",
+                "toolUseId": "call_1"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "tool_call_con_resultado": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Tool results provided.",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI",
+          "userInputMessageContext": {
+            "toolResults": [
+              {
+                "content": [
+                  {
+                    "text": "a.txt"
+                  }
+                ],
+                "status": "success",
+                "toolUseId": "call_1"
+              }
+            ],
+            "tools": [
+              {
+                "toolSpecification": {
+                  "description": "Ejecuta un comando",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {
+                        "command": {
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "name": "terminal"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Lista el directorio",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "",
+            "toolUses": [
+              {
+                "input": {
+                  "command": "ls"
+                },
+                "name": "terminal",
+                "toolUseId": "call_1"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "tool_result_con_error": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Tool results provided.",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI",
+          "userInputMessageContext": {
+            "toolResults": [
+              {
+                "content": [
+                  {
+                    "text": "command not found"
+                  }
+                ],
+                "status": "error",
+                "toolUseId": "call_err"
+              }
+            ],
+            "tools": [
+              {
+                "toolSpecification": {
+                  "description": "Tool",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {},
+                      "type": "object"
+                    }
+                  },
+                  "name": "terminal"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Falla esto",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "",
+            "toolUses": [
+              {
+                "input": {},
+                "name": "terminal",
+                "toolUseId": "call_err"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "tool_results_paralelos": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Sigue",
+          "modelId": "claude-sonnet-5",
+          "origin": "KIRO_CLI",
+          "userInputMessageContext": {
+            "tools": [
+              {
+                "toolSpecification": {
+                  "description": "Tool",
+                  "inputSchema": {
+                    "json": {
+                      "properties": {},
+                      "type": "object"
+                    }
+                  },
+                  "name": "read"
+                }
+              }
+            ]
+          }
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Dos cosas a la vez",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "",
+            "toolUses": [
+              {
+                "input": {
+                  "path": "a"
+                },
+                "name": "read",
+                "toolUseId": "call_a"
+              },
+              {
+                "input": {
+                  "path": "b"
+                },
+                "name": "read",
+                "toolUseId": "call_b"
+              }
+            ]
+          }
+        },
+        {
+          "userInputMessage": {
+            "content": "Tool results provided.",
+            "modelId": "claude-sonnet-5",
+            "origin": "KIRO_CLI",
+            "userInputMessageContext": {
+              "toolResults": [
+                {
+                  "content": [
+                    {
+                      "text": "contenido a"
+                    }
+                  ],
+                  "status": "success",
+                  "toolUseId": "call_a"
+                },
+                {
+                  "content": [
+                    {
+                      "text": "contenido b"
+                    }
+                  ],
+                  "status": "success",
+                  "toolUseId": "call_b"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  },
+  "usuarios_consecutivos_fusionados": {
+    "conversationState": {
+      "agentTaskType": "vibe",
+      "chatTriggerType": "MANUAL",
+      "conversationId": "<conversationId>",
+      "currentMessage": {
+        "userInputMessage": {
+          "content": "Tres",
+          "modelId": "claude-opus-5",
+          "origin": "KIRO_CLI"
+        }
+      },
+      "history": [
+        {
+          "userInputMessage": {
+            "content": "Uno\n\nDos",
+            "modelId": "claude-opus-5",
+            "origin": "KIRO_CLI"
+          }
+        },
+        {
+          "assistantResponseMessage": {
+            "content": "Ok"
+          }
+        }
+      ]
+    }
+  }
+}

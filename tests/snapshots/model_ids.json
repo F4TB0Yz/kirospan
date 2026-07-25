@@ -1,0 +1,18 @@
+{
+  "\u001b[1mclaude-opus-4-8\u001b[0m": "claude-opus-4.8",
+  "  claude-sonnet-5  ": "claude-sonnet-5",
+  "auto": "auto",
+  "claude-fable-5": "gpt-5.6-sol",
+  "claude-fable-5[1m]": "gpt-5.6-sol",
+  "claude-fable-5[22m": "gpt-5.6-sol",
+  "claude-opus-4-8": "claude-opus-4.8",
+  "claude-opus-4-8[1m]": "claude-opus-4.8",
+  "claude-sonnet-4-5-20250101": "claude-sonnet-4.5",
+  "claude-sonnet-5": "claude-sonnet-5",
+  "fable": "gpt-5.6-sol",
+  "fable-5": "gpt-5.6-sol",
+  "gpt-5.6-sol": "gpt-5.6-sol",
+  "haiku": "claude-haiku-4.5",
+  "opus": "claude-opus-5",
+  "sonnet": "claude-sonnet-5"
+}

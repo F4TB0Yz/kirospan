@@ -1,0 +1,249 @@
+{
+  "dos_tool_calls": {
+    "choices": [
+      {
+        "finish_reason": "tool_calls",
+        "index": 0,
+        "message": {
+          "content": null,
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "function": {
+                "arguments": "{\"path\":\"a\"}",
+                "name": "read"
+              },
+              "id": "tooluse_a",
+              "type": "function"
+            },
+            {
+              "function": {
+                "arguments": "{\"path\":\"b\"}",
+                "name": "read"
+              },
+              "id": "tooluse_b",
+              "type": "function"
+            }
+          ]
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "evento_de_error": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "Empiezo",
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "sin_eventos": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": null,
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "solo_texto": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "Hola mundo",
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 3,
+      "prompt_tokens": 12,
+      "total_tokens": 15
+    }
+  },
+  "texto_y_tool_call": {
+    "choices": [
+      {
+        "finish_reason": "tool_calls",
+        "index": 0,
+        "message": {
+          "content": "Voy a ejecutarlo",
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "function": {
+                "arguments": "{\"command\":\"ls\"}",
+                "name": "terminal"
+              },
+              "id": "tooluse_mix",
+              "type": "function"
+            }
+          ]
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 8,
+      "prompt_tokens": 30,
+      "total_tokens": 38
+    }
+  },
+  "tool_call_en_formato_bracket": {
+    "choices": [
+      {
+        "finish_reason": "tool_calls",
+        "index": 0,
+        "message": {
+          "content": "Ejecutando  listo",
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "function": {
+                "arguments": "{\"command\": \"pwd\"}",
+                "name": "terminal"
+              },
+              "id": "call_<generated>",
+              "type": "function"
+            }
+          ]
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "tool_use_input_por_evento_separado": {
+    "choices": [
+      {
+        "finish_reason": "tool_calls",
+        "index": 0,
+        "message": {
+          "content": null,
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "function": {
+                "arguments": "{\"path\": \"a.txt\"}",
+                "name": "read"
+              },
+              "id": "tooluse_read",
+              "type": "function"
+            }
+          ]
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "una_tool_call_fragmentada": {
+    "choices": [
+      {
+        "finish_reason": "tool_calls",
+        "index": 0,
+        "message": {
+          "content": null,
+          "role": "assistant",
+          "tool_calls": [
+            {
+              "function": {
+                "arguments": "{\"command\": \"pwd\"}",
+                "name": "terminal"
+              },
+              "id": "tooluse_one",
+              "type": "function"
+            }
+          ]
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    }
+  },
+  "uso_de_contexto_ignorado": {
+    "choices": [
+      {
+        "finish_reason": "stop",
+        "index": 0,
+        "message": {
+          "content": "Texto",
+          "role": "assistant"
+        }
+      }
+    ],
+    "created": "<created>",
+    "id": "chatcmpl-<generated>",
+    "model": "claude-sonnet-5",
+    "object": "chat.completion",
+    "usage": {
+      "completion_tokens": 1,
+      "prompt_tokens": 5,
+      "total_tokens": 6
+    }
+  }
+}

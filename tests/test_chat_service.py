@@ -1,0 +1,203 @@
+"""Tests de `gateway.application.chat` y los presenters de `gateway.protocols`.
+
+Verifican el flujo unificado que sustituye a las tres implementaciones que
+decodificaban el stream de Kiro por separado.
+"""
+
+import json
+
+import pytest
+
+from gateway.application.chat import ChatService
+from gateway.domain.errors import UpstreamError
+from gateway.domain.events import Completed, StreamError, TextDelta, ToolUseDelta, ToolUseStart, UsageReport
+from gateway.protocols.openai.non_stream_presenter import openai_non_stream
+from gateway.protocols.openai.sse_presenter import openai_stream
+
+
+class _FakeRuntimeClient:
+    def __init__(self, events):
+        self._events = events
+
+    def stream(self, *, access_token, state):
+        async def generator():
+            for event in self._events:
+                yield event
+
+        return generator()
+
+
+class _FailingRuntimeClient:
+    def __init__(self, error: UpstreamError):
+        self._error = error
+
+    def stream(self, *, access_token, state):
+        async def generator():
+            raise self._error
+            yield  # pragma: no cover - hace de esta una función generadora
+
+        return generator()
+
+
+async def collect(service, **kwargs):
+    return [event async for event in service.run(**kwargs)]
+
+
+class TestChatService:
+    async def test_text_only_response(self):
+        service = ChatService(_FakeRuntimeClient([{"content": "hola"}, {"content": " mundo"}]))
+        events = await collect(service, access_token="t", state={})
+        assert events == [TextDelta("hola"), TextDelta(" mundo"), Completed("stop")]
+
+    async def test_tool_use_fragmented_across_events(self):
+        raw = [
+            {"name": "terminal", "toolUseId": "t1", "input": ""},
+            {"name": "terminal", "toolUseId": "t1", "input": '{"command"'},
+            {"name": "terminal", "toolUseId": "t1", "input": ': "pwd"}'},
+            {"stop": True},
+        ]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert events[0] == ToolUseStart(0, "t1", "terminal", "")
+        assert events[1] == ToolUseDelta(0, '{"command"')
+        assert events[2] == ToolUseDelta(0, ': "pwd"}')
+        assert events[-1] == Completed("tool_calls")
+
+    async def test_tool_use_input_follows_the_active_tool(self):
+        raw = [
+            {"name": "read", "toolUseId": "t1", "input": ""},
+            {"input": '{"path"'},
+            {"input": ': "a"}'},
+        ]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert events == [
+            ToolUseStart(0, "t1", "read", ""),
+            ToolUseDelta(0, '{"path"'),
+            ToolUseDelta(0, ': "a"}'),
+            Completed("tool_calls"),
+        ]
+
+    async def test_two_tool_calls_get_increasing_indices(self):
+        raw = [
+            {"name": "read", "toolUseId": "a", "input": '{"path":"a"}'},
+            {"name": "read", "toolUseId": "b", "input": '{"path":"b"}'},
+        ]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        starts = [event for event in events if isinstance(event, ToolUseStart)]
+        assert [event.index for event in starts] == [0, 1]
+
+    async def test_usage_event(self):
+        raw = [{"content": "x"}, {"usage": {"inputTokens": 5, "outputTokens": 2}}]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert UsageReport(5, 2) in events
+
+    async def test_error_event_is_forwarded_and_stream_continues(self):
+        raw = [{"content": "antes"}, {"error": "Boom", "message": "detalle"}, {"content": "despues"}]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert StreamError("detalle") in events
+        assert TextDelta("despues") in events
+
+    async def test_bracket_tool_calls_are_extracted_and_the_text_is_cleaned(self):
+        raw = [{"content": 'Ejecutando [Called terminal with args: {"command": "pwd"}] listo'}]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        starts = [event for event in events if isinstance(event, ToolUseStart)]
+        assert starts[0].name == "terminal"
+        assert events[-1] == Completed("tool_calls")
+        # La detección es por evento: Kiro manda el bracket completo dentro
+        # de un único evento `content`, así que se limpia antes de emitirse
+        # y el texto crudo no llega al cliente.
+        text_events = [event for event in events if isinstance(event, TextDelta)]
+        assert all("[Called" not in event.text for event in text_events)
+        assert TextDelta("Ejecutando  listo") in events
+
+    async def test_upstream_error_becomes_a_stream_error_and_completes(self):
+        service = ChatService(_FailingRuntimeClient(UpstreamError("caido", status_code=502)))
+        events = await collect(service, access_token="t", state={})
+        assert events == [StreamError("caido"), Completed("stop")]
+
+    async def test_empty_stream_completes_without_tool_calls(self):
+        events = await collect(ChatService(_FakeRuntimeClient([])), access_token="t", state={})
+        assert events == [Completed("stop")]
+
+
+async def _events_to_stream(events):
+    for event in events:
+        yield event
+
+
+class TestOpenAIStreamPresenter:
+    async def _lines(self, events):
+        return [line async for line in openai_stream(_events_to_stream(events), "claude-sonnet-5")]
+
+    async def test_text_delta_becomes_a_content_chunk(self):
+        lines = await self._lines([TextDelta("hola"), Completed("stop")])
+        first = json.loads(lines[0].removeprefix("data: ").strip())
+        assert first["choices"][0]["delta"]["content"] == "hola"
+
+    async def test_completed_emits_usage_and_done(self):
+        lines = await self._lines([UsageReport(3, 1), Completed("stop")])
+        final = json.loads(lines[-2].removeprefix("data: ").strip())
+        assert final["usage"] == {"prompt_tokens": 3, "completion_tokens": 1, "total_tokens": 4}
+        assert lines[-1] == "data: [DONE]\n\n"
+
+    async def test_tool_use_start_and_delta(self):
+        lines = await self._lines([
+            ToolUseStart(0, "call_1", "terminal", '{"a"'),
+            ToolUseDelta(0, ":1}"),
+            Completed("tool_calls"),
+        ])
+        payloads = [json.loads(line.removeprefix("data: ").strip()) for line in lines[:-2]]
+        first_delta = payloads[0]["choices"][0]["delta"]["tool_calls"][0]
+        assert first_delta == {
+            "index": 0,
+            "id": "call_1",
+            "type": "function",
+            "function": {"name": "terminal", "arguments": '{"a"'},
+        }
+        second_delta = payloads[1]["choices"][0]["delta"]["tool_calls"][0]
+        assert second_delta == {"index": 0, "function": {"arguments": ":1}"}}
+
+    async def test_stream_error_is_forwarded_as_content(self):
+        lines = await self._lines([StreamError("Boom"), Completed("stop")])
+        payload = json.loads(lines[0].removeprefix("data: ").strip())
+        assert "[Kiro error: Boom]" in payload["choices"][0]["delta"]["content"]
+
+
+class TestOpenAINonStreamPresenter:
+    async def test_aggregates_text_and_usage(self):
+        response = await openai_non_stream(
+            _events_to_stream([TextDelta("ho"), TextDelta("la"), UsageReport(4, 2), Completed("stop")]),
+            "claude-sonnet-5",
+        )
+        assert response["choices"][0]["message"]["content"] == "hola"
+        assert response["choices"][0]["finish_reason"] == "stop"
+        assert response["usage"]["total_tokens"] == 6
+
+    async def test_tool_calls_are_accumulated_by_index(self):
+        response = await openai_non_stream(
+            _events_to_stream([
+                ToolUseStart(0, "call_1", "f", '{"a"'),
+                ToolUseDelta(0, ":1}"),
+                Completed("tool_calls"),
+            ]),
+            "claude-sonnet-5",
+        )
+        tool_call = response["choices"][0]["message"]["tool_calls"][0]
+        assert tool_call["function"]["arguments"] == '{"a":1}'
+
+    async def test_content_is_used_as_is_since_chat_service_already_cleans_it(self):
+        # openai_non_stream ya no limpia el texto: ChatService lo hace por
+        # evento antes de emitirlo. Aquí se simula el TextDelta ya limpio, tal
+        # como llegaría en el flujo real.
+        response = await openai_non_stream(
+            _events_to_stream([
+                TextDelta("Ejecutando  listo"),
+                ToolUseStart(0, "call_generado", "terminal", '{"command": "pwd"}'),
+                Completed("tool_calls"),
+            ]),
+            "claude-sonnet-5",
+        )
+        assert response["choices"][0]["message"]["content"] == "Ejecutando  listo"
+
+    async def test_content_without_tool_calls_is_none_when_empty(self):
+        response = await openai_non_stream(_events_to_stream([Completed("stop")]), "claude-sonnet-5")
+        assert response["choices"][0]["message"]["content"] is None
