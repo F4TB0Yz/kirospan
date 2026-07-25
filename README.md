@@ -1,4 +1,4 @@
-# Kiro Gateway
+# KiroSpan
 
 An unofficial local gateway that exposes the Kiro runtime through OpenAI- and Anthropic-compatible HTTP APIs. It lets clients such as Claude Code, OpenCode, and OpenAI-compatible SDKs use the models available to an authenticated local Kiro CLI installation.
 
@@ -38,7 +38,7 @@ See [SECURITY.md](SECURITY.md) for the complete guidance.
 ## Installation
 
 ```bash
-cd kiro-gateway
+cd kirospan
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -116,9 +116,9 @@ Configure an `@ai-sdk/openai-compatible` provider with:
 ```json
 {
   "provider": {
-    "kiro-gateway": {
+    "kirospan": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Kiro Gateway",
+      "name": "KiroSpan",
       "options": {
         "baseURL": "http://127.0.0.1:18789/v1",
         "apiKey": "replace-with-your-local-gateway-key"

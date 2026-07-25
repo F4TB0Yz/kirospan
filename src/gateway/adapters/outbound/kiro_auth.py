@@ -7,9 +7,9 @@ from ...domain.errors import AuthError
 from ...domain.token import refresh_token_of
 
 DEFAULT_EXPIRES_IN_SECONDS = 3600
-USER_AGENT = "kiro-gateway"
+USER_AGENT = "kirospan"
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 def _expiry_iso(expires_in: int) -> str:

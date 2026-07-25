@@ -128,7 +128,7 @@ def test_tool_use_with_dict_input():
     print("✓ Test 9: Tool use with dict input - PASSED")
 
 if __name__ == "__main__":
-    print("Running Kiro Gateway Tool Call Tests\n" + "=" * 50)
+    print("Running KiroSpan Tool Call Tests\n" + "=" * 50)
 
     try:
         test_parse_tool_use_event()

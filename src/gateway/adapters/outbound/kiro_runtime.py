@@ -23,7 +23,7 @@ RUNTIME_HEADERS = {
     "x-amzn-kiro-agent-mode": "vibe",
 }
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 class HttpKiroRuntimeClient:

@@ -21,7 +21,7 @@ from .....domain.images import extract_kiro_images
 from ..schemas import AnthropicRequest
 from ._shared import resolve_profile_arn
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
 

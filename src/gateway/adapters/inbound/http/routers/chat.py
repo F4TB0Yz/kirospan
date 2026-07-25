@@ -14,7 +14,7 @@ from .....protocols.openai.sse_presenter import openai_stream
 from ..schemas import ChatRequest
 from ._shared import resolve_profile_arn
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"}
 

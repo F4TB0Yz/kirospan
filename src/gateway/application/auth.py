@@ -14,7 +14,7 @@ import logging
 from ..domain.errors import AuthError
 from ..domain.token import access_token_of, token_expires_soon
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 NO_TOKEN_MESSAGE = "No Kiro token found. Run 'kiro-cli auth login'."
 

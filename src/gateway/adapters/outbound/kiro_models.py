@@ -4,7 +4,7 @@ import logging
 
 import httpx
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 class HttpModelCatalogSource:

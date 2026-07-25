@@ -26,7 +26,7 @@ from .continuation import (
 from .responses import estimate_output_tokens
 from .sse import anthropic_sse
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 async def _run_one_call(stream_runtime, client, access_token, state, model_id, next_block_index):

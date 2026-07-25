@@ -1,6 +1,6 @@
 # Architecture
 
-Kiro Gateway follows Clean Architecture: policy and protocol transformation stay independent of frameworks, while I/O details live at the edges. Dependencies point inward.
+KiroSpan follows Clean Architecture: policy and protocol transformation stay independent of frameworks, while I/O details live at the edges. Dependencies point inward.
 
 ```text
 HTTP clients

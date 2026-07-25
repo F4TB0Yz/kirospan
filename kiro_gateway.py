@@ -107,7 +107,7 @@ def to_openai_model_list(kiro_models: list[dict]) -> list[dict]:
     return _to_openai_model_list(kiro_models, int(time.time()))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 # ── Config ──────────────────────────────────────────────────────────────────
 # Instancia única leída del entorno. Los módulos nuevos la reciben inyectada;
@@ -250,7 +250,7 @@ async def fetch_models(client: httpx.AsyncClient, token: dict) -> list[dict]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info(f"Kiro REST Gateway v3 — {MANAGEMENT_URL}")
+    log.info(f"KiroSpan v3 — {MANAGEMENT_URL}")
     log.info(f"Runtime: {RUNTIME_URL}")
     log.info("Tool calling support enabled (based on pi-provider-kiro)")
     try:

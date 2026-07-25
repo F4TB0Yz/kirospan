@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from ..domain.token import access_token_of, profile_arn_of
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 @dataclass(frozen=True, slots=True)

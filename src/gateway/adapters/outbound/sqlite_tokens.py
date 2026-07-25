@@ -22,7 +22,7 @@ WRITE_TIMEOUT_SECONDS = 10
 # Tokens reales de Kiro tienen access_token > 50 chars (JWT)
 MIN_VALID_TOKEN_LENGTH = 50
 
-log = logging.getLogger("kiro-gateway")
+log = logging.getLogger("kirospan")
 
 
 def _read_keychain_token() -> dict | None:

@@ -9,7 +9,7 @@ Parts of this project's Kiro protocol behavior and its initial runtime integrati
 - Repository owner: mikeyobrien
 - License declared by the upstream package: MIT
 
-`pi-provider-kiro` is a TypeScript provider for the Pi coding agent. Kiro Gateway is an independent Python/FastAPI adaptation and is not a fork of that repository. The current project adds its own HTTP APIs, protocol presenters, application services, adapters, tests, image support, token lifecycle management, and Clean Architecture organization.
+`pi-provider-kiro` is a TypeScript provider for the Pi coding agent. KiroSpan is an independent Python/FastAPI adaptation and is not a fork of that repository. The current project adds its own HTTP APIs, protocol presenters, application services, adapters, tests, image support, token lifecycle management, and Clean Architecture organization.
 
 The upstream project's MIT license permits use, modification, and redistribution subject to preservation of its copyright and permission notice. Refer to the upstream repository for its current source and notices.
 

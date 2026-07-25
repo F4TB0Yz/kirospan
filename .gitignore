@@ -35,4 +35,4 @@ venv/
 node_modules/
 
 # Third-party/local binaries
-kiro-gateway
+kirospan
