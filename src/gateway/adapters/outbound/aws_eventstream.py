@@ -17,44 +17,53 @@ _HEADER_TYPE_BYTE = 6
 _HEADER_TYPE_STRING = 7
 _HEADER_TYPE_BINARY = 8
 
+EVENTSTREAM_EXCEPTION_KEY = "_aws_eventstream_exception"
 
-def _skip_headers(message: bytes, header_length: int) -> None:
-    """Recorre el bloque de cabeceras sin extraer nada.
 
-    El tipo de evento viaja en `:event-type`, pero el runtime no lo rellena de
-    forma fiable, así que la clasificación se hace por la forma del payload en
-    `protocols.kiro.event_decoder`.
-    """
+def _headers_of(message: bytes, header_length: int) -> dict[str, object]:
+    """Extrae las cabeceras soportadas del frame sin interpretar el payload."""
+    headers: dict[str, object] = {}
     position = PRELUDE_SIZE
-    end = PRELUDE_SIZE + header_length
-    limit = len(message)
+    end = min(PRELUDE_SIZE + header_length, len(message))
 
-    while position < end and position + 1 <= limit:
+    while position < end:
         name_length = message[position]
-        position += 1 + name_length
-        if position >= limit:
-            return
-
+        position += 1
+        if position + name_length + 1 > end:
+            break
+        name = message[position : position + name_length].decode("utf-8", errors="replace")
+        position += name_length
         header_type = message[position]
         position += 1
 
-        if header_type == _HEADER_TYPE_STRING:
-            if position + 2 > limit:
-                return
-            position += 2 + struct.unpack_from(">H", message, position)[0]
-        elif header_type == _HEADER_TYPE_BINARY:
-            if position + 2 > limit:
-                return
-            position += 2 + struct.unpack_from(">H", message, position)[0]
+        if header_type in {_HEADER_TYPE_STRING, _HEADER_TYPE_BINARY}:
+            if position + 2 > end:
+                break
+            value_length = struct.unpack_from(">H", message, position)[0]
+            position += 2
+            if position + value_length > end:
+                break
+            raw_value = message[position : position + value_length]
+            position += value_length
+            headers[name] = (
+                raw_value.decode("utf-8", errors="replace")
+                if header_type == _HEADER_TYPE_STRING
+                else raw_value
+            )
         elif header_type == _HEADER_TYPE_BYTE:
+            if position >= end:
+                break
+            headers[name] = message[position]
             position += 1
         else:
-            position += 1
+            # Los frames de Kiro observados solo usan byte, string y binary.
+            # Ante un tipo desconocido no es seguro inferir su longitud.
+            break
+
+    return headers
 
 
-def _payload_of(message: bytes) -> bytes:
-    header_length = struct.unpack_from(">I", message, 4)[0]
-    _skip_headers(message, header_length)
+def _payload_of(message: bytes, header_length: int) -> bytes:
     payload = message[PRELUDE_SIZE + header_length : len(message) - MESSAGE_CRC_SIZE]
     return payload.rstrip(b"\x00 ")
 
@@ -72,13 +81,32 @@ def decode_frames(buffer: bytearray) -> Iterator[dict]:
         message = bytes(buffer[:total_length])
         del buffer[:total_length]
 
-        payload = _payload_of(message)
+        header_length = struct.unpack_from(">I", message, 4)[0]
+        headers = _headers_of(message, header_length)
+        payload = _payload_of(message, header_length)
         if not payload:
             continue
         try:
-            yield json.loads(payload.decode("utf-8"))
+            parsed = json.loads(payload.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
+
+        if headers.get(":message-type") == "exception":
+            message_text = (
+                parsed.get("message") or parsed.get("Message") or "Unknown Kiro stream error"
+                if isinstance(parsed, dict)
+                else "Unknown Kiro stream error"
+            )
+            yield {
+                EVENTSTREAM_EXCEPTION_KEY: {
+                    "exception_type": str(headers.get(":exception-type") or "unknown"),
+                    "message": str(message_text),
+                }
+            }
+            continue
+
+        if isinstance(parsed, dict):
+            yield parsed
 
 
 async def read_aws_eventstream(response) -> AsyncIterator[dict]:

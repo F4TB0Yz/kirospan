@@ -12,9 +12,22 @@ import httpx
 
 from ...domain.errors import UpstreamError
 from ...domain.token import access_token_of, profile_arn_of
-from .aws_eventstream import read_aws_eventstream
+from .aws_eventstream import EVENTSTREAM_EXCEPTION_KEY, read_aws_eventstream
 
 ERROR_DETAIL_LIMIT = 500
+
+_TRANSIENT_EXCEPTION_TYPES = {
+    "internalservererror",
+    "internalserverexception",
+    "serviceunavailableexception",
+    "throttlingexception",
+}
+_TRANSIENT_MESSAGE_MARKERS = (
+    "unexpected error",
+    "please try again",
+    "temporarily unavailable",
+    "internal server error",
+)
 
 RUNTIME_HEADERS = {
     "Content-Type": "application/json",
@@ -24,6 +37,24 @@ RUNTIME_HEADERS = {
 }
 
 log = logging.getLogger("kirospan")
+
+
+def _is_retryable_stream_exception(exception_type: str, message: str) -> bool:
+    normalized_type = exception_type.replace("_", "").replace("-", "").lower()
+    normalized_message = message.lower()
+    return normalized_type in _TRANSIENT_EXCEPTION_TYPES or (
+        normalized_type in {"error", "serviceerror", "unknown"}
+        and any(marker in normalized_message for marker in _TRANSIENT_MESSAGE_MARKERS)
+    )
+
+
+def _request_id_of(response) -> str | None:
+    headers = getattr(response, "headers", {})
+    return (
+        headers.get("x-amzn-requestid")
+        or headers.get("x-amzn-request-id")
+        or headers.get("x-amz-request-id")
+    )
 
 
 class HttpKiroRuntimeClient:
@@ -54,6 +85,29 @@ class HttpKiroRuntimeClient:
             ) as response:
                 if response.status_code == 200:
                     async for event in read_aws_eventstream(response):
+                        exception = event.get(EVENTSTREAM_EXCEPTION_KEY)
+                        if exception:
+                            exception_type = str(exception.get("exception_type") or "unknown")
+                            message = str(
+                                exception.get("message") or "Unknown Kiro stream error"
+                            )
+                            request_id = _request_id_of(response)
+                            retryable = _is_retryable_stream_exception(
+                                exception_type, message
+                            )
+                            log.error(
+                                "Kiro EventStream exception request_id=%s "
+                                "exception_type=%s retryable=%s",
+                                request_id or "unknown",
+                                exception_type,
+                                retryable,
+                            )
+                            raise UpstreamError(
+                                f"Kiro stream error: {message}",
+                                status_code=502,
+                                retryable=retryable,
+                                request_id=request_id,
+                            )
                         yield event
                     return
 

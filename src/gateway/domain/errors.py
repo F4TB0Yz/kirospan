@@ -20,6 +20,15 @@ class AuthError(GatewayError):
 class UpstreamError(GatewayError):
     """El runtime de Kiro ha respondido con un fallo."""
 
-    def __init__(self, message: str, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int | None = None,
+        *,
+        retryable: bool = False,
+        request_id: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.retryable = retryable
+        self.request_id = request_id

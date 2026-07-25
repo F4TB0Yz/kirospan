@@ -11,7 +11,11 @@ import zlib
 
 import pytest
 
-from gateway.adapters.outbound.aws_eventstream import decode_frames, read_aws_eventstream
+from gateway.adapters.outbound.aws_eventstream import (
+    EVENTSTREAM_EXCEPTION_KEY,
+    decode_frames,
+    read_aws_eventstream,
+)
 from gateway.adapters.outbound.clock import SystemClock
 from gateway.adapters.outbound.kiro_auth import DesktopTokenRefresher
 from gateway.adapters.outbound.kiro_models import HttpModelCatalogSource
@@ -37,12 +41,21 @@ def _string_header(name: str, value: str) -> bytes:
     )
 
 
-def build_frame(payload: dict, event_type: str = "assistantResponseEvent") -> bytes:
+def build_frame(
+    payload: dict,
+    event_type: str = "assistantResponseEvent",
+    *,
+    message_type: str = "event",
+    exception_type: str | None = None,
+) -> bytes:
     """Construye un frame de AWS EventStream válido, con CRC incluidos."""
     body = json.dumps(payload).encode()
-    headers = _string_header(":event-type", event_type) + _string_header(
-        ":content-type", "application/json"
-    )
+    headers = _string_header(":message-type", message_type)
+    if event_type:
+        headers += _string_header(":event-type", event_type)
+    if exception_type:
+        headers += _string_header(":exception-type", exception_type)
+    headers += _string_header(":content-type", "application/json")
     total_length = 12 + len(headers) + len(body) + 4
     prelude = struct.pack(">II", total_length, len(headers))
     prelude += struct.pack(">I", zlib.crc32(prelude) & 0xFFFFFFFF)
@@ -53,8 +66,9 @@ def build_frame(payload: dict, event_type: str = "assistantResponseEvent") -> by
 class _FakeStreamResponse:
     """Respuesta que entrega los bytes en los trozos indicados."""
 
-    def __init__(self, chunks, status_code=200):
+    def __init__(self, chunks, status_code=200, headers=None):
         self.status_code = status_code
+        self.headers = headers or {}
         self._chunks = chunks
 
     async def aiter_bytes(self):
@@ -107,6 +121,26 @@ class TestDecodeFrames:
 
         buffer = bytearray(frame + build_frame({"content": "valido"}))
         assert list(decode_frames(buffer)) == [{"content": "valido"}]
+
+    def test_eventstream_exception_preserves_type_and_message(self):
+        frame = build_frame(
+            {"message": "Encountered an unexpected error when processing the request, please try again."},
+            event_type="",
+            message_type="exception",
+            exception_type="error",
+        )
+
+        assert list(decode_frames(bytearray(frame))) == [
+            {
+                EVENTSTREAM_EXCEPTION_KEY: {
+                    "exception_type": "error",
+                    "message": (
+                        "Encountered an unexpected error when processing the request, "
+                        "please try again."
+                    ),
+                }
+            }
+        ]
 
     def test_binary_and_byte_headers_are_skipped(self):
         body = json.dumps({"content": "x"}).encode()
@@ -410,6 +444,51 @@ class TestHttpKiroRuntimeClient:
             async for event in runtime.stream(access_token="t", state={"conversationState": {}})
         ]
         assert events == [{"content": "hola"}]
+
+    async def test_eventstream_exception_becomes_retryable_upstream_error(self):
+        response = _FakeStreamResponse(
+            [
+                build_frame(
+                    {
+                        "message": (
+                            "Encountered an unexpected error when processing the request, "
+                            "please try again."
+                        )
+                    },
+                    event_type="",
+                    message_type="exception",
+                    exception_type="error",
+                )
+            ],
+            headers={"x-amzn-requestid": "request-123"},
+        )
+        runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
+
+        with pytest.raises(UpstreamError) as error:
+            [event async for event in runtime.stream(access_token="t", state={})]
+
+        assert error.value.status_code == 502
+        assert error.value.retryable is True
+        assert error.value.request_id == "request-123"
+        assert "unexpected error" in str(error.value)
+
+    async def test_non_transient_eventstream_exception_is_not_retryable(self):
+        response = _FakeStreamResponse(
+            [
+                build_frame(
+                    {"message": "Conversation payload is invalid; please try again"},
+                    event_type="",
+                    message_type="exception",
+                    exception_type="ValidationException",
+                )
+            ]
+        )
+        runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
+
+        with pytest.raises(UpstreamError) as error:
+            [event async for event in runtime.stream(access_token="t", state={})]
+
+        assert error.value.retryable is False
 
     async def test_headers_are_sent_once_and_complete(self):
         client = _StreamingClient([_FakeStreamResponse([])])

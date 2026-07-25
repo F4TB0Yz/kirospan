@@ -23,6 +23,9 @@ esa fracción no se detectaría — es una limitación conocida, no cubierta por
 los datos de producción disponibles al momento de esta corrección.
 """
 
+import asyncio
+import logging
+
 from ..domain.errors import UpstreamError
 from ..domain.events import (
     AssistantEvent,
@@ -36,67 +39,117 @@ from ..domain.events import (
 from ..protocols.kiro.bracket_tools import parse_bracket_tool_calls
 from ..protocols.kiro.event_decoder import parse_kiro_event
 
+MAX_TRANSIENT_ATTEMPTS = 2
+TRANSIENT_RETRY_DELAY_SECONDS = 0.15
+
+log = logging.getLogger("kirospan")
+
+
+def _model_id_of(state: dict) -> str:
+    conversation = state.get("conversationState") or {}
+    current = conversation.get("currentMessage") or {}
+    user_input = current.get("userInputMessage") or {}
+    return str(user_input.get("modelId") or "unknown")
+
 
 class ChatService:
     """Traduce el stream de Kiro a `AssistantEvent`, una sola vez por turno."""
 
-    def __init__(self, runtime_client) -> None:
+    def __init__(self, runtime_client, sleep=asyncio.sleep) -> None:
         self._runtime_client = runtime_client
+        self._sleep = sleep
 
     async def run(self, *, access_token: str, state: dict):
-        """Genera los eventos de una respuesta completa del asistente."""
+        """Genera eventos y reintenta una excepción transitoria solo antes de emitir."""
         tool_indices: dict[str, int] = {}
         active_tool_id: str | None = None
         next_index = 0
         saw_tool_use = False
+        emitted_output = False
+        attempt = 1
 
-        try:
-            async for raw_event in self._runtime_client.stream(
-                access_token=access_token, state=state
-            ):
-                parsed = parse_kiro_event(raw_event)
-                if not parsed:
-                    continue
-                event_type, data = parsed["type"], parsed["data"]
+        while True:
+            try:
+                async for raw_event in self._runtime_client.stream(
+                    access_token=access_token, state=state
+                ):
+                    parsed = parse_kiro_event(raw_event)
+                    if not parsed:
+                        continue
+                    event_type, data = parsed["type"], parsed["data"]
 
-                if event_type == "content":
-                    bracket_tools, cleaned_text = parse_bracket_tool_calls(data)
-                    if cleaned_text:
-                        yield TextDelta(cleaned_text)
-                    for bracket_tool in bracket_tools:
+                    if event_type == "content":
+                        bracket_tools, cleaned_text = parse_bracket_tool_calls(data)
+                        if cleaned_text:
+                            emitted_output = True
+                            yield TextDelta(cleaned_text)
+                        for bracket_tool in bracket_tools:
+                            saw_tool_use = True
+                            emitted_output = True
+                            function = bracket_tool["function"]
+                            yield ToolUseStart(
+                                next_index,
+                                bracket_tool["id"],
+                                function["name"],
+                                function["arguments"],
+                            )
+                            next_index += 1
+
+                    elif event_type == "toolUse":
                         saw_tool_use = True
-                        function = bracket_tool["function"]
-                        yield ToolUseStart(
-                            next_index, bracket_tool["id"], function["name"], function["arguments"]
+                        tool_id = data["toolUseId"]
+                        tool_input = data.get("input", "")
+                        active_tool_id = tool_id
+
+                        if tool_id not in tool_indices:
+                            tool_indices[tool_id] = next_index
+                            emitted_output = True
+                            yield ToolUseStart(
+                                next_index, tool_id, data["name"], tool_input
+                            )
+                            next_index += 1
+                        elif tool_input:
+                            emitted_output = True
+                            yield ToolUseDelta(tool_indices[tool_id], tool_input)
+
+                    elif event_type == "toolUseInput" and active_tool_id in tool_indices:
+                        emitted_output = True
+                        yield ToolUseDelta(tool_indices[active_tool_id], data["input"])
+
+                    elif event_type == "usage":
+                        emitted_output = True
+                        yield UsageReport(
+                            data.get("inputTokens") or 0,
+                            data.get("outputTokens") or 0,
                         )
-                        next_index += 1
 
-                elif event_type == "toolUse":
-                    saw_tool_use = True
-                    tool_id = data["toolUseId"]
-                    tool_input = data.get("input", "")
-                    active_tool_id = tool_id
+                    elif event_type == "error":
+                        emitted_output = True
+                        message = (
+                            data.get("message")
+                            or data.get("error")
+                            or "Unknown Kiro stream error"
+                        )
+                        yield StreamError(str(message))
+                break
+            except UpstreamError as exc:
+                if exc.retryable and not emitted_output and attempt < MAX_TRANSIENT_ATTEMPTS:
+                    attempt += 1
+                    log.warning(
+                        "Retrying transient Kiro stream exception "
+                        "request_id=%s model=%s attempt=%d/%d",
+                        exc.request_id or "unknown",
+                        _model_id_of(state),
+                        attempt,
+                        MAX_TRANSIENT_ATTEMPTS,
+                    )
+                    await self._sleep(TRANSIENT_RETRY_DELAY_SECONDS)
+                    continue
 
-                    if tool_id not in tool_indices:
-                        tool_indices[tool_id] = next_index
-                        yield ToolUseStart(next_index, tool_id, data["name"], tool_input)
-                        next_index += 1
-                    elif tool_input:
-                        yield ToolUseDelta(tool_indices[tool_id], tool_input)
-
-                elif event_type == "toolUseInput" and active_tool_id in tool_indices:
-                    yield ToolUseDelta(tool_indices[active_tool_id], data["input"])
-
-                elif event_type == "usage":
-                    yield UsageReport(data.get("inputTokens") or 0, data.get("outputTokens") or 0)
-
-                elif event_type == "error":
-                    message = data.get("message") or data.get("error") or "Unknown Kiro stream error"
-                    yield StreamError(str(message))
-        except UpstreamError as exc:
-            yield StreamError(str(exc))
-            yield Completed("stop")
-            return
+                yield StreamError(str(exc))
+                finish_reason = "tool_calls" if saw_tool_use else "stop"
+                yield Completed(finish_reason)
+                return
 
         finish_reason = "tool_calls" if saw_tool_use else "stop"
         yield Completed(finish_reason)

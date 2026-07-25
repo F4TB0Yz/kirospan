@@ -39,6 +39,30 @@ class _FailingRuntimeClient:
         return generator()
 
 
+class _SequencedRuntimeClient:
+    """Una secuencia por intento; cada elemento es un evento o una excepción."""
+
+    def __init__(self, attempts):
+        self._attempts = list(attempts)
+        self.calls = 0
+
+    def stream(self, *, access_token, state):
+        attempt = self._attempts[self.calls]
+        self.calls += 1
+
+        async def generator():
+            for item in attempt:
+                if isinstance(item, Exception):
+                    raise item
+                yield item
+
+        return generator()
+
+
+async def _no_delay(_seconds):
+    return None
+
+
 async def collect(service, **kwargs):
     return [event async for event in service.run(**kwargs)]
 
@@ -113,6 +137,78 @@ class TestChatService:
         service = ChatService(_FailingRuntimeClient(UpstreamError("caido", status_code=502)))
         events = await collect(service, access_token="t", state={})
         assert events == [StreamError("caido"), Completed("stop")]
+
+    async def test_retryable_stream_exception_is_retried_once_before_output(self, caplog):
+        transient = UpstreamError(
+            "unexpected error, please try again",
+            status_code=502,
+            retryable=True,
+            request_id="request-123",
+        )
+        runtime = _SequencedRuntimeClient([[transient], [{"content": "recuperado"}]])
+        state = {
+            "conversationState": {
+                "currentMessage": {"userInputMessage": {"modelId": "claude-sonnet-5"}}
+            }
+        }
+
+        events = await collect(
+            ChatService(runtime, sleep=_no_delay), access_token="t", state=state
+        )
+
+        assert events == [TextDelta("recuperado"), Completed("stop")]
+        assert runtime.calls == 2
+        assert "request_id=request-123" in caplog.text
+        assert "model=claude-sonnet-5" in caplog.text
+        assert "attempt=2/2" in caplog.text
+
+    @pytest.mark.parametrize(
+        "first_event",
+        [
+            {"content": "una vez"},
+            {"name": "terminal", "toolUseId": "tool-1", "input": "{}"},
+            {"usage": {"inputTokens": 3, "outputTokens": 1}},
+        ],
+    )
+    async def test_retryable_exception_after_output_is_not_retried(self, first_event):
+        transient = UpstreamError("temporary", status_code=502, retryable=True)
+        runtime = _SequencedRuntimeClient(
+            [[first_event, transient], [{"content": "no debe aparecer"}]]
+        )
+
+        events = await collect(
+            ChatService(runtime, sleep=_no_delay), access_token="t", state={}
+        )
+
+        assert runtime.calls == 1
+        assert events.count(TextDelta("una vez")) <= 1
+        assert TextDelta("no debe aparecer") not in events
+        assert StreamError("temporary") in events
+        assert events[-1] == Completed(
+            "tool_calls" if "toolUseId" in first_event else "stop"
+        )
+
+    async def test_retryable_exception_is_attempted_at_most_twice(self):
+        transient = UpstreamError("temporary", status_code=502, retryable=True)
+        runtime = _SequencedRuntimeClient([[transient], [transient], [{"content": "third"}]])
+
+        events = await collect(
+            ChatService(runtime, sleep=_no_delay), access_token="t", state={}
+        )
+
+        assert runtime.calls == 2
+        assert events == [StreamError("temporary"), Completed("stop")]
+
+    async def test_non_retryable_exception_is_not_retried(self):
+        failure = UpstreamError("invalid payload", status_code=502, retryable=False)
+        runtime = _SequencedRuntimeClient([[failure], [{"content": "second"}]])
+
+        events = await collect(
+            ChatService(runtime, sleep=_no_delay), access_token="t", state={}
+        )
+
+        assert runtime.calls == 1
+        assert events == [StreamError("invalid payload"), Completed("stop")]
 
     async def test_empty_stream_completes_without_tool_calls(self):
         events = await collect(ChatService(_FakeRuntimeClient([])), access_token="t", state={})
