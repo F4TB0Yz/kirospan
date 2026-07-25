@@ -9,7 +9,7 @@ description = "Local OpenAI- and Anthropic-compatible gateway for the Kiro runti
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
-keywords = ["kiro", "openai", "anthropic", "gateway", "fastapi"]
+keywords = ["kiro", "openai", "anthropic", "gateway", "fastapi", "hermes-agent"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",

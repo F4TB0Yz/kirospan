@@ -1,6 +1,6 @@
 # KiroSpan
 
-An unofficial local gateway that exposes the Kiro runtime through OpenAI- and Anthropic-compatible HTTP APIs. It lets clients such as Claude Code, OpenCode, and OpenAI-compatible SDKs use the models available to an authenticated local Kiro CLI installation.
+An unofficial local gateway that exposes the Kiro runtime through OpenAI- and Anthropic-compatible HTTP APIs. It lets clients such as Hermes Agent, Claude Code, OpenCode, and OpenAI-compatible SDKs use the models available to an authenticated local Kiro CLI installation.
 
 > [!IMPORTANT]
 > This project is independent and is not affiliated with, endorsed by, or sponsored by Amazon, AWS, Anthropic, OpenAI, or Kiro. You are responsible for complying with the terms that apply to your Kiro account and clients.
@@ -10,6 +10,7 @@ An unofficial local gateway that exposes the Kiro runtime through OpenAI- and An
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
 - Anthropic-compatible `/v1/messages` and `/v1/messages/count_tokens` endpoints.
 - Streaming text, tool calls, fragmented tool arguments, and parallel tool results.
+- Tested Hermes Agent support, including complete tool-call round trips.
 - Claude Code subagent and tool-result continuity.
 - Base64 PNG, JPEG, GIF, and WebP input images.
 - Automatic Kiro access-token refresh and persistence.
@@ -132,6 +133,26 @@ Configure an `@ai-sdk/openai-compatible` provider with:
 ```
 
 Keep the real key in your client's secret or environment mechanism; do not commit it in configuration.
+
+### Hermes Agent
+
+Use a dedicated profile so KiroSpan remains optional and does not replace your normal Hermes provider or model:
+
+```bash
+./examples/setup-hermes-profile.sh
+export KIROSPAN_API_KEY="$KIRO_GATEWAY_KEY"
+hermes --profile kirospan -z 'Reply exactly HERMES_KIROSPAN_OK'
+```
+
+The helper creates `~/.hermes/profiles/kirospan` with:
+
+- provider `custom:kirospan`;
+- model `claude-sonnet-5`;
+- OpenAI-compatible transport `chat_completions`;
+- endpoint `http://127.0.0.1:18789/v1`;
+- `key_env: KIROSPAN_API_KEY`, with no inline API key.
+
+The active Hermes profile and its default provider remain unchanged. To configure the profile manually, run the commands shown in [`examples/setup-hermes-profile.sh`](examples/setup-hermes-profile.sh).
 
 ## HTTP API
 
