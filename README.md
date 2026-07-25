@@ -36,10 +36,55 @@ See [SECURITY.md](SECURITY.md) for the complete guidance.
 - A working `kiro-cli` installation authenticated with `kiro-cli auth login`.
 - macOS is the primary tested platform. Linux's standard Kiro CLI SQLite location is also recognized; the Keychain fallback is macOS-specific.
 
-## Installation
+## Quick installation for Hermes Agent (macOS)
+
+For the intended Hermes experience, install KiroSpan once and then use the normal global `hermes` command from any directory:
 
 ```bash
-cd kirospan
+kiro-cli auth login
+./install-hermes.sh
+```
+
+The installer:
+
+- installs KiroSpan in an isolated virtual environment under `~/.local/share/kirospan`;
+- runs it automatically as the `dev.kirospan.gateway` macOS LaunchAgent on `127.0.0.1:18789`;
+- disables the legacy `com.kiro.gateway` LaunchAgent if present, preserving its plist with a `.disabled-by-kirospan` suffix;
+- removes the obsolete Hermes `kiro-gateway` custom provider and preserves a `config.yaml.bak-kirospan` backup;
+- synchronizes all models returned by Kiro into the picker while keeping live discovery enabled;
+- generates a private gateway key and stores the service copy with mode `0600`;
+- registers KiroSpan in the global `~/.hermes/config.yaml` model picker;
+- stores `KIROSPAN_API_KEY` through Hermes' global secret store (`~/.hermes/.env`);
+- does **not** replace the currently selected Hermes provider or model.
+
+Select a model once:
+
+```bash
+hermes model
+```
+
+Choose **KiroSpan**, then choose any model returned by Kiro's live model catalog. After that, start Hermes normally from any project or directory:
+
+```bash
+hermes
+```
+
+No `--profile`, wrapper script, working-directory change, or manual environment export is required. Run `./install-hermes.sh` again to update the installed runtime while preserving the generated key.
+
+Check the background service or restart it with:
+
+```bash
+launchctl print "gui/$(id -u)/dev.kirospan.gateway"
+launchctl kickstart -k "gui/$(id -u)/dev.kirospan.gateway"
+```
+
+Logs are written to `~/Library/Logs/KiroSpan.log` and `~/Library/Logs/KiroSpan.error.log`. The installer currently automates the background service on macOS; on another operating system, use `./install-hermes.sh --no-service` and manage the `kirospan` process with your system service manager.
+
+## Manual/development installation
+
+Use this flow when developing KiroSpan or configuring a client other than Hermes:
+
+```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
@@ -136,23 +181,9 @@ Keep the real key in your client's secret or environment mechanism; do not commi
 
 ### Hermes Agent
 
-Use a dedicated profile so KiroSpan remains optional and does not replace your normal Hermes provider or model:
+The recommended integration is global: run [`install-hermes.sh`](install-hermes.sh), select **KiroSpan** with `hermes model`, and then launch `hermes` normally from any directory. Hermes discovers available models from the authenticated `http://127.0.0.1:18789/v1/models` endpoint, so the picker follows Kiro's live catalog instead of relying on a hard-coded model list.
 
-```bash
-./examples/setup-hermes-profile.sh
-export KIROSPAN_API_KEY="$KIRO_GATEWAY_KEY"
-hermes --profile kirospan -z 'Reply exactly HERMES_KIROSPAN_OK'
-```
-
-The helper creates `~/.hermes/profiles/kirospan` with:
-
-- provider `custom:kirospan`;
-- model `claude-sonnet-5`;
-- OpenAI-compatible transport `chat_completions`;
-- endpoint `http://127.0.0.1:18789/v1`;
-- `key_env: KIROSPAN_API_KEY`, with no inline API key.
-
-The active Hermes profile and its default provider remain unchanged. To configure the profile manually, run the commands shown in [`examples/setup-hermes-profile.sh`](examples/setup-hermes-profile.sh).
+The installer only adds `providers.kirospan` and its secret; it intentionally leaves `model.default` and `model.provider` untouched until you choose KiroSpan yourself. The isolated profile helper in [`examples/setup-hermes-profile.sh`](examples/setup-hermes-profile.sh) remains available for users who explicitly prefer profile isolation, but it is not required for normal use.
 
 ## HTTP API
 
