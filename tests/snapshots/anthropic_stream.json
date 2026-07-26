@@ -123,6 +123,13 @@
     },
     {
       "data": {
+        "index": 0,
+        "type": "content_block_stop"
+      },
+      "event": "content_block_stop"
+    },
+    {
+      "data": {
         "content_block": {
           "id": "tooluse_two",
           "input": {},
@@ -144,13 +151,6 @@
         "type": "content_block_delta"
       },
       "event": "content_block_delta"
-    },
-    {
-      "data": {
-        "index": 0,
-        "type": "content_block_stop"
-      },
-      "event": "content_block_stop"
     },
     {
       "data": {

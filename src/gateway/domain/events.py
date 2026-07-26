@@ -15,6 +15,13 @@ from typing import Literal, NamedTuple
 FinishReason = Literal["stop", "tool_calls"]
 
 
+class ThinkingDelta(NamedTuple):
+    """Fragmento de reasoning/thinking del asistente."""
+
+    text: str
+    signature: str = ""
+
+
 class TextDelta(NamedTuple):
     """Fragmento de texto del asistente."""
 
@@ -61,4 +68,6 @@ class Completed(NamedTuple):
     finish_reason: FinishReason
 
 
-AssistantEvent = TextDelta | ToolUseStart | ToolUseDelta | UsageReport | StreamError | Completed
+AssistantEvent = (
+    ThinkingDelta | TextDelta | ToolUseStart | ToolUseDelta | UsageReport | StreamError | Completed
+)

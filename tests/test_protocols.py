@@ -36,6 +36,32 @@ class _Request:
 
 
 class TestEventDecoder:
+    def test_readable_reasoning_event(self):
+        assert parse_kiro_event(
+            {"reasoningContent": {"text": "plan", "signature": "firma"}}
+        ) == {"type": "thinking", "data": {"text": "plan", "signature": "firma"}}
+
+    def test_readable_reasoning_is_inferred_without_event_type_wrapper(self):
+        assert parse_kiro_event({"text": "plan", "signature": "firma"}) == {
+            "type": "thinking",
+            "data": {"text": "plan", "signature": "firma"},
+        }
+
+    def test_reasoning_text_and_signature_frames_are_detected_separately(self):
+        assert parse_kiro_event({"text": "plan"}) == {
+            "type": "thinking",
+            "data": {"text": "plan", "signature": ""},
+        }
+        assert parse_kiro_event({"signature": "firma"}) == {
+            "type": "thinking",
+            "data": {"text": "", "signature": "firma"},
+        }
+
+    def test_redacted_reasoning_is_recognized_but_not_exposed(self):
+        assert parse_kiro_event(
+            {"reasoningContent": {"redactedContent": "blob-cifrado"}}
+        ) is None
+
     def test_content_event(self):
         assert parse_kiro_event({"content": "hola"}) == {"type": "content", "data": "hola"}
 
@@ -247,6 +273,21 @@ class TestAnthropicRequests:
 
 
 class TestAnthropicResponses:
+    def test_reasoning_becomes_thinking_block_before_text(self):
+        response = anthropic_response_from_openai({
+            "choices": [{
+                "message": {
+                    "reasoning_content": "plan",
+                    "content": "respuesta",
+                },
+                "finish_reason": "stop",
+            }]
+        })
+        assert response["content"] == [
+            {"type": "thinking", "thinking": "plan", "signature": ""},
+            {"type": "text", "text": "respuesta"},
+        ]
+
     def test_text_only_response(self):
         response = anthropic_response_from_openai({
             "id": "chatcmpl-1",
@@ -312,6 +353,9 @@ class TestContinuation:
             "Next I'll run the tests",
             "Lo ejecutaré ya",
             "Corregiré el fichero",
+            "Buscaré el archivo exacto.",
+            "Leeré la plantilla y mostraré el resultado.",
+            "Pruebo el marcador. Mediré ambos canales.",
         ],
     )
     def test_promises_are_detected(self, text):

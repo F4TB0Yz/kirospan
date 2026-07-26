@@ -10,7 +10,15 @@ import pytest
 
 from gateway.application.chat import ChatService
 from gateway.domain.errors import UpstreamError
-from gateway.domain.events import Completed, StreamError, TextDelta, ToolUseDelta, ToolUseStart, UsageReport
+from gateway.domain.events import (
+    Completed,
+    StreamError,
+    TextDelta,
+    ThinkingDelta,
+    ToolUseDelta,
+    ToolUseStart,
+    UsageReport,
+)
 from gateway.protocols.openai.non_stream_presenter import openai_non_stream
 from gateway.protocols.openai.sse_presenter import openai_stream
 
@@ -68,6 +76,20 @@ async def collect(service, **kwargs):
 
 
 class TestChatService:
+    async def test_readable_reasoning_is_propagated(self):
+        raw = [
+            {"reasoningContent": {"text": "plan", "signature": "firma"}},
+            {"content": "respuesta"},
+        ]
+        events = await collect(
+            ChatService(_FakeRuntimeClient(raw)), access_token="t", state={}
+        )
+        assert events == [
+            ThinkingDelta("plan", "firma"),
+            TextDelta("respuesta"),
+            Completed("stop"),
+        ]
+
     async def test_text_only_response(self):
         service = ChatService(_FakeRuntimeClient([{"content": "hola"}, {"content": " mundo"}]))
         events = await collect(service, access_token="t", state={})
@@ -188,6 +210,28 @@ class TestChatService:
             "tool_calls" if "toolUseId" in first_event else "stop"
         )
 
+    async def test_retryable_exception_after_thinking_retries_before_public_output(self):
+        transient = UpstreamError("temporary", status_code=502, retryable=True)
+        runtime = _SequencedRuntimeClient([
+            [{"reasoningContent": {"text": "descartado", "signature": "s1"}}, transient],
+            [
+                {"reasoningContent": {"text": "válido", "signature": "s2"}},
+                {"content": "respuesta"},
+            ],
+        ])
+
+        events = await collect(
+            ChatService(runtime, sleep=_no_delay), access_token="t", state={}
+        )
+
+        assert runtime.calls == 2
+        assert ThinkingDelta("descartado", "s1") not in events
+        assert events == [
+            ThinkingDelta("válido", "s2"),
+            TextDelta("respuesta"),
+            Completed("stop"),
+        ]
+
     async def test_retryable_exception_is_attempted_at_most_twice(self):
         transient = UpstreamError("temporary", status_code=502, retryable=True)
         runtime = _SequencedRuntimeClient([[transient], [transient], [{"content": "third"}]])
@@ -229,6 +273,11 @@ class TestOpenAIStreamPresenter:
         first = json.loads(lines[0].removeprefix("data: ").strip())
         assert first["choices"][0]["delta"]["content"] == "hola"
 
+    async def test_thinking_delta_becomes_reasoning_content_chunk(self):
+        lines = await self._lines([ThinkingDelta("plan"), Completed("stop")])
+        first = json.loads(lines[0].removeprefix("data: ").strip())
+        assert first["choices"][0]["delta"] == {"reasoning_content": "plan"}
+
     async def test_completed_emits_usage_and_done(self):
         lines = await self._lines([UsageReport(3, 1), Completed("stop")])
         final = json.loads(lines[-2].removeprefix("data: ").strip())
@@ -259,6 +308,15 @@ class TestOpenAIStreamPresenter:
 
 
 class TestOpenAINonStreamPresenter:
+    async def test_thinking_only_has_reasoning_and_null_content(self):
+        response = await openai_non_stream(
+            _events_to_stream([ThinkingDelta("plan"), Completed("stop")]),
+            "claude-opus-4.8",
+        )
+        message = response["choices"][0]["message"]
+        assert message["reasoning_content"] == "plan"
+        assert message["content"] is None
+
     async def test_aggregates_text_and_usage(self):
         response = await openai_non_stream(
             _events_to_stream([TextDelta("ho"), TextDelta("la"), UsageReport(4, 2), Completed("stop")]),

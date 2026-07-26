@@ -20,7 +20,7 @@ import uuid
 from .continuation import (
     MAX_AUTO_CONTINUATIONS,
     build_continuation_state,
-    response_promises_followup,
+    response_needs_continuation,
     state_has_tool_results,
 )
 from .responses import estimate_output_tokens
@@ -30,19 +30,86 @@ log = logging.getLogger("kirospan")
 
 
 async def _run_one_call(stream_runtime, client, access_token, state, model_id, next_block_index):
-    """Consume una pasada de `stream_runtime` y emite los frames SSE de Anthropic.
-
-    Devuelve el texto emitido, los tokens y caracteres de esta pasada, si vio
-    alguna tool call, y el `finish_reason` reportado.
-    """
-    text_block_index = None
-    tool_blocks: dict[int, int] = {}
-    open_blocks: set[int] = set()
+    """Emite texto/thinking al vuelo y difiere tools hasta completar su JSON."""
+    active_kind = None
+    active_index = None
+    thinking_signature = ""
+    pending_tools: dict[int, dict[str, str]] = {}
     response_text_parts: list[str] = []
     output_tokens = 0
     output_characters = 0
     saw_tool = False
     finish_reason = None
+
+    def close_active() -> list[str]:
+        nonlocal active_kind, active_index, thinking_signature
+        if active_index is None:
+            return []
+        frames = []
+        if active_kind == "thinking" and thinking_signature:
+            frames.append(anthropic_sse("content_block_delta", {
+                "type": "content_block_delta",
+                "index": active_index,
+                "delta": {
+                    "type": "signature_delta",
+                    "signature": thinking_signature,
+                },
+            }))
+        frames.append(anthropic_sse("content_block_stop", {
+            "type": "content_block_stop",
+            "index": active_index,
+        }))
+        active_kind = None
+        active_index = None
+        thinking_signature = ""
+        return frames
+
+    def tool_is_complete(tool: dict[str, str]) -> bool:
+        arguments = tool["arguments"].strip()
+        if not arguments:
+            return False
+        try:
+            json.loads(arguments)
+        except json.JSONDecodeError:
+            return False
+        return True
+
+    def flush_tools(*, complete_only: bool) -> list[str]:
+        nonlocal next_block_index
+        frames = []
+        ready = [
+            index
+            for index, tool in pending_tools.items()
+            if not complete_only or tool_is_complete(tool)
+        ]
+        for openai_index in ready:
+            tool = pending_tools.pop(openai_index)
+            block_index = next_block_index
+            next_block_index += 1
+            frames.append(anthropic_sse("content_block_start", {
+                "type": "content_block_start",
+                "index": block_index,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": tool["id"],
+                    "name": tool["name"],
+                    "input": {},
+                },
+            }))
+            if tool["arguments"]:
+                frames.append(anthropic_sse("content_block_delta", {
+                    "type": "content_block_delta",
+                    "index": block_index,
+                    "delta": {
+                        "type": "input_json_delta",
+                        "partial_json": tool["arguments"],
+                    },
+                }))
+            frames.append(anthropic_sse("content_block_stop", {
+                "type": "content_block_stop",
+                "index": block_index,
+            }))
+        return frames
 
     async for line in stream_runtime(client, access_token, state, model_id):
         if not line.startswith("data: {"):
@@ -55,69 +122,96 @@ async def _run_one_call(stream_runtime, client, access_token, state, model_id, n
         choice = (payload.get("choices") or [{}])[0]
         delta = choice.get("delta") or {}
 
-        if delta.get("content") is not None:
-            text = delta["content"]
-            response_text_parts.append(text)
-            output_characters += len(text)
-            if text_block_index is None:
-                text_block_index = next_block_index
+        if delta.get("reasoning_content") is not None:
+            for frame in close_active() if active_kind != "thinking" else []:
+                yield "frame", frame
+            for frame in flush_tools(complete_only=True):
+                yield "frame", frame
+            if active_kind != "thinking":
+                active_kind = "thinking"
+                active_index = next_block_index
                 next_block_index += 1
-                open_blocks.add(text_block_index)
-                yield ("frame", anthropic_sse("content_block_start", {
+                yield "frame", anthropic_sse("content_block_start", {
                     "type": "content_block_start",
-                    "index": text_block_index,
-                    "content_block": {"type": "text", "text": ""},
-                }))
-            yield ("frame", anthropic_sse("content_block_delta", {
-                "type": "content_block_delta",
-                "index": text_block_index,
-                "delta": {"type": "text_delta", "text": text},
-            }))
-
-        for tool_call in delta.get("tool_calls") or []:
-            saw_tool = True
-            openai_index = int(tool_call.get("index", 0))
-            function = tool_call.get("function") or {}
-            if openai_index not in tool_blocks:
-                block_index = next_block_index
-                next_block_index += 1
-                tool_blocks[openai_index] = block_index
-                open_blocks.add(block_index)
-                yield ("frame", anthropic_sse("content_block_start", {
-                    "type": "content_block_start",
-                    "index": block_index,
+                    "index": active_index,
                     "content_block": {
-                        "type": "tool_use",
-                        "id": tool_call.get("id") or f"toolu_{uuid.uuid4().hex[:20]}",
-                        "name": function.get("name", ""),
-                        "input": {},
+                        "type": "thinking",
+                        "thinking": "",
+                        "signature": "",
                     },
-                }))
-            arguments = function.get("arguments")
-            if arguments:
-                output_characters += len(arguments)
-                yield ("frame", anthropic_sse("content_block_delta", {
+                })
+            reasoning_text = str(delta.get("reasoning_content") or "")
+            if reasoning_text:
+                output_characters += len(reasoning_text)
+                yield "frame", anthropic_sse("content_block_delta", {
                     "type": "content_block_delta",
-                    "index": tool_blocks[openai_index],
-                    "delta": {"type": "input_json_delta", "partial_json": arguments},
-                }))
+                    "index": active_index,
+                    "delta": {"type": "thinking_delta", "thinking": reasoning_text},
+                })
+            if delta.get("reasoning_signature"):
+                thinking_signature = str(delta["reasoning_signature"])
+
+        if delta.get("content") is not None:
+            for frame in close_active() if active_kind != "text" else []:
+                yield "frame", frame
+            for frame in flush_tools(complete_only=True):
+                yield "frame", frame
+            if active_kind != "text":
+                active_kind = "text"
+                active_index = next_block_index
+                next_block_index += 1
+                yield "frame", anthropic_sse("content_block_start", {
+                    "type": "content_block_start",
+                    "index": active_index,
+                    "content_block": {"type": "text", "text": ""},
+                })
+            content = str(delta["content"])
+            response_text_parts.append(content)
+            output_characters += len(content)
+            yield "frame", anthropic_sse("content_block_delta", {
+                "type": "content_block_delta",
+                "index": active_index,
+                "delta": {"type": "text_delta", "text": content},
+            })
+
+        tool_calls = delta.get("tool_calls") or []
+        if tool_calls:
+            saw_tool = True
+            for frame in close_active():
+                yield "frame", frame
+            for tool_call in tool_calls:
+                openai_index = int(tool_call.get("index", 0))
+                function = tool_call.get("function") or {}
+                tool = pending_tools.setdefault(openai_index, {
+                    "id": tool_call.get("id") or f"toolu_{uuid.uuid4().hex[:20]}",
+                    "name": function.get("name", ""),
+                    "arguments": "",
+                })
+                if tool_call.get("id"):
+                    tool["id"] = tool_call["id"]
+                if function.get("name"):
+                    tool["name"] = function["name"]
+                arguments = str(function.get("arguments") or "")
+                tool["arguments"] += arguments
+                output_characters += len(arguments)
 
         if choice.get("finish_reason") is not None:
             finish_reason = choice["finish_reason"]
             break
 
-    yield (
-        "result",
-        {
-            "next_block_index": next_block_index,
-            "open_blocks": open_blocks,
-            "text": "".join(response_text_parts),
-            "output_tokens": output_tokens,
-            "output_characters": output_characters,
-            "saw_tool": saw_tool,
-            "finish_reason": finish_reason or "stop",
-        },
-    )
+    for frame in close_active():
+        yield "frame", frame
+    for frame in flush_tools(complete_only=False):
+        yield "frame", frame
+    yield "result", {
+        "next_block_index": next_block_index,
+        "open_blocks": set(),
+        "text": "".join(response_text_parts),
+        "output_tokens": output_tokens,
+        "output_characters": output_characters,
+        "saw_tool": saw_tool,
+        "finish_reason": finish_reason or "stop",
+    }
 
 
 async def anthropic_stream_presenter(stream_runtime, client, access_token, state, model_id):
@@ -170,9 +264,18 @@ async def anthropic_stream_presenter(stream_runtime, client, access_token, state
             and continuation_attempts < MAX_AUTO_CONTINUATIONS
             and call_result["finish_reason"] == "stop"
             and not call_result["saw_tool"]
-            and response_promises_followup(call_result["text"])
+            and response_needs_continuation(
+                call_result["text"],
+                after_tool_result=state_has_tool_results(runtime_state),
+            )
         )
         if should_continue:
+            for block_index in sorted(call_result["open_blocks"]):
+                yield anthropic_sse(
+                    "content_block_stop",
+                    {"type": "content_block_stop", "index": block_index},
+                )
+                all_open_blocks.discard(block_index)
             continuation_attempts += 1
             log.warning(
                 "Anthropic auto-continuation %d/%d after unfinished progress response",

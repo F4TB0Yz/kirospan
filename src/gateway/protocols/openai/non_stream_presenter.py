@@ -3,7 +3,7 @@
 import time
 import uuid
 
-from ...domain.events import Completed, StreamError, TextDelta, ToolUseDelta, ToolUseStart, UsageReport
+from ...domain.events import Completed, StreamError, TextDelta, ThinkingDelta, ToolUseDelta, ToolUseStart, UsageReport
 
 
 async def openai_non_stream(events, model_id: str) -> dict:
@@ -13,12 +13,19 @@ async def openai_non_stream(events, model_id: str) -> dict:
     evento a evento, así que aquí no hace falta volver a tocarlo.
     """
     full_content_parts: list[str] = []
+    reasoning_parts: list[str] = []
+    reasoning_signature = ""
     tool_calls: list[dict] = []
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     finish_reason = "stop"
 
     async for event in events:
-        if isinstance(event, TextDelta):
+        if isinstance(event, ThinkingDelta):
+            reasoning_parts.append(event.text)
+            if event.signature:
+                reasoning_signature = event.signature
+
+        elif isinstance(event, TextDelta):
             full_content_parts.append(event.text)
 
         elif isinstance(event, ToolUseStart):
@@ -46,6 +53,10 @@ async def openai_non_stream(events, model_id: str) -> dict:
 
     content = "".join(full_content_parts).strip()
     message = {"role": "assistant", "content": content if content else None}
+    if reasoning_parts:
+        message["reasoning_content"] = "".join(reasoning_parts)
+        if reasoning_signature:
+            message["reasoning_signature"] = reasoning_signature
     if tool_calls:
         message["tool_calls"] = tool_calls
 

@@ -5,10 +5,37 @@ EventStream, así que el tipo se infiere de las claves presentes en el payload.
 El orden de las comprobaciones importa: `toolUse` se distingue de
 `toolUseInput` por llevar `name`, y `toolUseStop` de `contextUsage` por no
 llevar el porcentaje.
+
+Reasoning: Kiro emite dos variantes de `reasoningContent`:
+- Claude legible: {"reasoningContent": {"text": "...", "signature": "..."}}
+- GPT redactado:  {"reasoningContent": {"redactedContent": "...blob..."}}
+Solo la variante con `text` se propaga como thinking; la redactada se descarta.
 """
 
 import json
 from typing import Optional
+
+
+def _extract_reasoning(parsed: dict) -> dict | None:
+    """Extrae reasoning envuelto o inferido por su estructura."""
+    reasoning = parsed.get("reasoningContent")
+    if not isinstance(reasoning, dict):
+        reasoning = parsed if any(
+            key in parsed for key in ("text", "signature", "redactedContent")
+        ) else None
+    if not isinstance(reasoning, dict):
+        return None
+
+    text = reasoning.get("text")
+    signature = reasoning.get("signature")
+    if isinstance(text, str) or isinstance(signature, str):
+        return {
+            "text": text if isinstance(text, str) else "",
+            "signature": signature if isinstance(signature, str) else "",
+        }
+    if "redactedContent" in reasoning:
+        return {}
+    return None
 
 
 def _as_json_text(value) -> str:
@@ -22,6 +49,11 @@ def parse_kiro_event(parsed: dict) -> Optional[dict]:
     """Devuelve `{"type", "data"}` o `None` si el evento no interesa."""
     if not isinstance(parsed, dict):
         return None
+
+    # Reasoning/thinking — check first so it takes precedence
+    reasoning = _extract_reasoning(parsed)
+    if reasoning is not None:
+        return {"type": "thinking", "data": reasoning} if reasoning else None
 
     if "content" in parsed:
         return {"type": "content", "data": parsed["content"]}

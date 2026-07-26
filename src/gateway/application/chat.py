@@ -32,6 +32,7 @@ from ..domain.events import (
     Completed,
     StreamError,
     TextDelta,
+    ThinkingDelta,
     ToolUseDelta,
     ToolUseStart,
     UsageReport,
@@ -65,10 +66,13 @@ class ChatService:
         active_tool_id: str | None = None
         next_index = 0
         saw_tool_use = False
-        emitted_output = False
+        emitted_committed_output = False
+        thinking_events = 0
+        thinking_chars = 0
         attempt = 1
 
         while True:
+            pending_thinking: list[ThinkingDelta] = []
             try:
                 async for raw_event in self._runtime_client.stream(
                     access_token=access_token, state=state
@@ -78,14 +82,28 @@ class ChatService:
                         continue
                     event_type, data = parsed["type"], parsed["data"]
 
-                    if event_type == "content":
+                    if event_type == "thinking":
+                        text = data["text"]
+                        thinking_events += 1
+                        thinking_chars += len(text)
+                        pending_thinking.append(
+                            ThinkingDelta(text, data.get("signature", ""))
+                        )
+
+                    elif event_type == "content":
                         bracket_tools, cleaned_text = parse_bracket_tool_calls(data)
                         if cleaned_text:
-                            emitted_output = True
+                            for thinking in pending_thinking:
+                                yield thinking
+                            pending_thinking.clear()
+                            emitted_committed_output = True
                             yield TextDelta(cleaned_text)
                         for bracket_tool in bracket_tools:
+                            for thinking in pending_thinking:
+                                yield thinking
+                            pending_thinking.clear()
                             saw_tool_use = True
-                            emitted_output = True
+                            emitted_committed_output = True
                             function = bracket_tool["function"]
                             yield ToolUseStart(
                                 next_index,
@@ -102,38 +120,50 @@ class ChatService:
                         active_tool_id = tool_id
 
                         if tool_id not in tool_indices:
+                            for thinking in pending_thinking:
+                                yield thinking
+                            pending_thinking.clear()
                             tool_indices[tool_id] = next_index
-                            emitted_output = True
+                            emitted_committed_output = True
                             yield ToolUseStart(
                                 next_index, tool_id, data["name"], tool_input
                             )
                             next_index += 1
                         elif tool_input:
-                            emitted_output = True
+                            emitted_committed_output = True
                             yield ToolUseDelta(tool_indices[tool_id], tool_input)
 
                     elif event_type == "toolUseInput" and active_tool_id in tool_indices:
-                        emitted_output = True
+                        emitted_committed_output = True
                         yield ToolUseDelta(tool_indices[active_tool_id], data["input"])
 
                     elif event_type == "usage":
-                        emitted_output = True
+                        for thinking in pending_thinking:
+                            yield thinking
+                        pending_thinking.clear()
+                        emitted_committed_output = True
                         yield UsageReport(
                             data.get("inputTokens") or 0,
                             data.get("outputTokens") or 0,
                         )
 
                     elif event_type == "error":
-                        emitted_output = True
+                        emitted_committed_output = True
                         message = (
                             data.get("message")
                             or data.get("error")
                             or "Unknown Kiro stream error"
                         )
                         yield StreamError(str(message))
+                for thinking in pending_thinking:
+                    yield thinking
                 break
             except UpstreamError as exc:
-                if exc.retryable and not emitted_output and attempt < MAX_TRANSIENT_ATTEMPTS:
+                if (
+                    exc.retryable
+                    and not emitted_committed_output
+                    and attempt < MAX_TRANSIENT_ATTEMPTS
+                ):
                     attempt += 1
                     log.warning(
                         "Retrying transient Kiro stream exception "
@@ -153,3 +183,10 @@ class ChatService:
 
         finish_reason = "tool_calls" if saw_tool_use else "stop"
         yield Completed(finish_reason)
+        if thinking_events:
+            log.info(
+                "Kiro turn thinking model=%s thinking_events=%d thinking_chars=%d",
+                _model_id_of(state),
+                thinking_events,
+                thinking_chars,
+            )
