@@ -216,6 +216,39 @@ class TestSqliteTokenRepository:
         await repository.save({"access_token": "y" * 60, "expires_at": "2099-01-01T00:00:00Z"})
         assert (await repository.load())["access_token"] == "y" * 60
 
+    def test_save_inserts_token_when_row_is_missing(self, sqlite_db):
+        import sqlite3
+
+        connection = sqlite3.connect(sqlite_db)
+        connection.execute("DELETE FROM auth_kv WHERE key = ?", (TOKEN_KEY,))
+        connection.commit()
+        connection.close()
+
+        token = {"access_token": "nuevo", "expires_at": "2099-01-01T00:00:00Z"}
+        SqliteTokenRepository((sqlite_db,)).save_sync(token)
+
+        connection = sqlite3.connect(sqlite_db)
+        rows = connection.execute(
+            "SELECT value FROM auth_kv WHERE key = ?", (TOKEN_KEY,)
+        ).fetchall()
+        connection.close()
+        assert len(rows) == 1
+        assert json.loads(rows[0][0]) == token
+
+    def test_save_updates_existing_token_without_duplicating_row(self, sqlite_db):
+        import sqlite3
+
+        token = {"access_token": "actualizado", "expires_at": "2099-01-01T00:00:00Z"}
+        SqliteTokenRepository((sqlite_db,)).save_sync(token)
+
+        connection = sqlite3.connect(sqlite_db)
+        rows = connection.execute(
+            "SELECT value FROM auth_kv WHERE key = ?", (TOKEN_KEY,)
+        ).fetchall()
+        connection.close()
+        assert len(rows) == 1
+        assert json.loads(rows[0][0]) == token
+
     async def test_missing_database_falls_back_to_keychain(self, tmp_path, monkeypatch):
         _no_keychain(monkeypatch)
         repository = SqliteTokenRepository((tmp_path / "no-existe.sqlite3",))
