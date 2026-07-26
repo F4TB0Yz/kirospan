@@ -92,7 +92,11 @@ def build_anthropic_router(token_service, model_catalog, runtime_client_factory)
 
         try:
             chat_service = ChatService(runtime_client_factory())
-            events = chat_service.run(access_token=access_token, state=state)
+            events = chat_service.run(
+                access_token=access_token,
+                state=state,
+                propagate_upstream_errors=True,
+            )
             response = await openai_non_stream(events, req.model)
         except UpstreamError as exc:
             raise HTTPException(exc.status_code or 502, str(exc)) from exc
