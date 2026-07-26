@@ -13,6 +13,7 @@ import pytest
 
 from gateway.adapters.outbound.aws_eventstream import (
     EVENTSTREAM_EXCEPTION_KEY,
+    TruncatedEventStreamError,
     decode_frames,
     decode_kiro_frames,
     read_aws_eventstream,
@@ -177,6 +178,21 @@ class TestReadAwsEventstream:
 
     async def test_empty_response_yields_nothing(self):
         assert [event async for event in read_aws_eventstream(_FakeStreamResponse([]))] == []
+
+    async def test_partial_prelude_at_eof_is_rejected(self):
+        response = _FakeStreamResponse([b"\x00\x00\x00"])
+
+        with pytest.raises(TruncatedEventStreamError):
+            [event async for event in read_aws_eventstream(response)]
+
+    async def test_declared_frame_incomplete_at_eof_is_rejected(self):
+        frame = build_frame({"content": "secreto"})
+        response = _FakeStreamResponse([frame[:-4]])
+
+        with pytest.raises(TruncatedEventStreamError) as error:
+            [event async for event in read_aws_eventstream(response)]
+
+        assert "secreto" not in str(error.value)
 
 
 # ── Repositorio de tokens ───────────────────────────────────────────────────
@@ -518,6 +534,23 @@ class TestHttpKiroRuntimeClient:
             async for event in runtime.stream(access_token="t", state={"conversationState": {}})
         ]
         assert events == [{"content": "hola"}]
+
+    async def test_truncated_eventstream_becomes_retryable_upstream_error(self, caplog):
+        frame = build_frame({"content": "contenido-privado"})
+        response = _FakeStreamResponse(
+            [frame[:-4]],
+            headers={"x-amzn-requestid": "request-truncated"},
+        )
+        runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
+
+        with pytest.raises(UpstreamError) as error:
+            [event async for event in runtime.stream(access_token="t", state={})]
+
+        assert error.value.status_code == 502
+        assert error.value.retryable is True
+        assert error.value.request_id == "request-truncated"
+        assert "contenido-privado" not in str(error.value)
+        assert "contenido-privado" not in caplog.text
 
     async def test_eventstream_exception_becomes_retryable_upstream_error(self):
         response = _FakeStreamResponse(

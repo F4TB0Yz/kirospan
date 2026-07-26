@@ -20,6 +20,10 @@ _HEADER_TYPE_BINARY = 8
 EVENTSTREAM_EXCEPTION_KEY = "_aws_eventstream_exception"
 
 
+class TruncatedEventStreamError(Exception):
+    """La respuesta terminó antes de completar un frame AWS EventStream."""
+
+
 class KiroFrame(NamedTuple):
     """Payload Kiro junto al tipo declarado por AWS EventStream."""
 
@@ -130,6 +134,10 @@ async def read_kiro_frames(response) -> AsyncIterator[KiroFrame]:
         buffer.extend(chunk)
         for frame in decode_kiro_frames(buffer):
             yield frame
+    if buffer:
+        raise TruncatedEventStreamError(
+            f"EventStream truncado con {len(buffer)} bytes pendientes"
+        )
 
 
 async def read_aws_eventstream(response) -> AsyncIterator[dict]:

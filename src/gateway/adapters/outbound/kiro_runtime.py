@@ -12,7 +12,11 @@ import httpx
 
 from ...domain.errors import UpstreamError
 from ...domain.token import access_token_of, profile_arn_of
-from .aws_eventstream import EVENTSTREAM_EXCEPTION_KEY, read_kiro_frames
+from .aws_eventstream import (
+    EVENTSTREAM_EXCEPTION_KEY,
+    TruncatedEventStreamError,
+    read_kiro_frames,
+)
 
 ERROR_DETAIL_LIMIT = 500
 
@@ -84,36 +88,52 @@ class HttpKiroRuntimeClient:
                 json=state,
             ) as response:
                 if response.status_code == 200:
-                    async for frame in read_kiro_frames(response):
-                        event = frame.payload
-                        exception = event.get(EVENTSTREAM_EXCEPTION_KEY)
-                        if exception:
-                            exception_type = str(exception.get("exception_type") or "unknown")
-                            message = str(
-                                exception.get("message") or "Unknown Kiro stream error"
-                            )
-                            request_id = _request_id_of(response)
-                            retryable = _is_retryable_stream_exception(
-                                exception_type, message
-                            )
-                            log.error(
-                                "Kiro EventStream exception request_id=%s "
-                                "exception_type=%s retryable=%s",
-                                request_id or "unknown",
-                                exception_type,
-                                retryable,
-                            )
-                            raise UpstreamError(
-                                f"Kiro stream error: {message}",
-                                status_code=502,
-                                retryable=retryable,
-                                request_id=request_id,
-                            )
-                        if frame.event_type == "reasoningContentEvent" and (
-                            "reasoningContent" not in event
-                        ):
-                            event = {"reasoningContent": event}
-                        yield event
+                    try:
+                        async for frame in read_kiro_frames(response):
+                            event = frame.payload
+                            exception = event.get(EVENTSTREAM_EXCEPTION_KEY)
+                            if exception:
+                                exception_type = str(
+                                    exception.get("exception_type") or "unknown"
+                                )
+                                message = str(
+                                    exception.get("message")
+                                    or "Unknown Kiro stream error"
+                                )
+                                request_id = _request_id_of(response)
+                                retryable = _is_retryable_stream_exception(
+                                    exception_type, message
+                                )
+                                log.error(
+                                    "Kiro EventStream exception request_id=%s "
+                                    "exception_type=%s retryable=%s",
+                                    request_id or "unknown",
+                                    exception_type,
+                                    retryable,
+                                )
+                                raise UpstreamError(
+                                    f"Kiro stream error: {message}",
+                                    status_code=502,
+                                    retryable=retryable,
+                                    request_id=request_id,
+                                )
+                            if frame.event_type == "reasoningContentEvent" and (
+                                "reasoningContent" not in event
+                            ):
+                                event = {"reasoningContent": event}
+                            yield event
+                    except TruncatedEventStreamError as exc:
+                        request_id = _request_id_of(response)
+                        log.error(
+                            "Kiro EventStream truncated request_id=%s",
+                            request_id or "unknown",
+                        )
+                        raise UpstreamError(
+                            "Kiro EventStream ended with an incomplete frame",
+                            status_code=502,
+                            retryable=True,
+                            request_id=request_id,
+                        ) from exc
                     return
 
                 body = await response.aread()
