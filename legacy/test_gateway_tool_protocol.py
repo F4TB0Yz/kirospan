@@ -32,11 +32,13 @@ class TokenRefreshTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(kiro_gateway, "get_kiro_token", side_effect=[expired, expired]),
             patch.object(kiro_gateway, "_refresh_kiro_token", new=AsyncMock(return_value=fresh)) as refresh,
+            patch.object(kiro_gateway, "_save_kiro_token") as save,
         ):
             result = await _ensure_token(object())
 
         self.assertEqual(result["access_token"], "fresh-access")
         refresh.assert_awaited_once()
+        save.assert_called_once_with(fresh)
 
     async def test_desktop_refresh_is_persisted(self):
         class Response:
