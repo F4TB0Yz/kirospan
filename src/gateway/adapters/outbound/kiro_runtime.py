@@ -12,7 +12,7 @@ import httpx
 
 from ...domain.errors import UpstreamError
 from ...domain.token import access_token_of, profile_arn_of
-from .aws_eventstream import EVENTSTREAM_EXCEPTION_KEY, read_aws_eventstream
+from .aws_eventstream import EVENTSTREAM_EXCEPTION_KEY, read_kiro_frames
 
 ERROR_DETAIL_LIMIT = 500
 
@@ -84,7 +84,8 @@ class HttpKiroRuntimeClient:
                 json=state,
             ) as response:
                 if response.status_code == 200:
-                    async for event in read_aws_eventstream(response):
+                    async for frame in read_kiro_frames(response):
+                        event = frame.payload
                         exception = event.get(EVENTSTREAM_EXCEPTION_KEY)
                         if exception:
                             exception_type = str(exception.get("exception_type") or "unknown")
@@ -108,6 +109,10 @@ class HttpKiroRuntimeClient:
                                 retryable=retryable,
                                 request_id=request_id,
                             )
+                        if frame.event_type == "reasoningContentEvent" and (
+                            "reasoningContent" not in event
+                        ):
+                            event = {"reasoningContent": event}
                         yield event
                     return
 

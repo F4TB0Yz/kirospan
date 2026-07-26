@@ -15,6 +15,10 @@ from .....protocols.anthropic.responses import (
 )
 from .....protocols.anthropic.sse_presenter import anthropic_stream_presenter
 from .....protocols.kiro.conversation import build_conversation_state
+from .....protocols.kiro.reasoning import (
+    build_additional_model_request_fields,
+    thinking_system_markers,
+)
 from .....protocols.openai.non_stream_presenter import openai_non_stream
 from .....protocols.openai.sse_presenter import openai_stream
 from .....domain.images import extract_kiro_images
@@ -53,14 +57,25 @@ def build_anthropic_router(token_service, model_catalog, runtime_client_factory)
         if backend_model != req.model:
             log.info(f"Model alias normalized: {req.model} -> {backend_model}")
 
+        additional_fields = build_additional_model_request_fields(
+            backend_model,
+            thinking=req.thinking,
+            output_config=req.output_config,
+        )
         try:
             state = build_conversation_state(
-                backend_model, messages, tools=tools or None, enforce_tool_continuation=False
+                backend_model,
+                messages,
+                system_prompt=thinking_system_markers(additional_fields),
+                tools=tools or None,
+                enforce_tool_continuation=False,
             )
         except InvalidRequest as exc:
             raise HTTPException(400, str(exc)) from exc
         state["profileArn"] = profile_arn
         state["agentMode"] = "vibe"
+        if additional_fields:
+            state["additionalModelRequestFields"] = additional_fields
 
         if req.stream:
             async def stream_runtime(client_, access_token_, state_, model_id_):

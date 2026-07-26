@@ -28,6 +28,12 @@ def anthropic_response_from_openai(response: dict) -> dict:
     message = choice.get("message") or {}
 
     content = []
+    if message.get("reasoning_content"):
+        content.append({
+            "type": "thinking",
+            "thinking": message["reasoning_content"],
+            "signature": message.get("reasoning_signature", ""),
+        })
     if message.get("content"):
         content.append({"type": "text", "text": message["content"]})
     content.extend(_tool_use_block(tool_call) for tool_call in message.get("tool_calls") or [])

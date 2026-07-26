@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = None
     tools: Optional[list[dict]] = None
     tool_choice: Optional[dict | str] = None
+    reasoning_effort: Optional[str] = None
 
 
 class AnthropicRequest(BaseModel):
@@ -28,3 +29,5 @@ class AnthropicRequest(BaseModel):
     temperature: Optional[float] = None
     tools: Optional[list[dict]] = None
     tool_choice: Optional[dict | str] = None
+    thinking: Optional[dict] = None
+    output_config: Optional[dict] = None

@@ -4,7 +4,7 @@ import json
 import time
 import uuid
 
-from ...domain.events import Completed, StreamError, TextDelta, ToolUseDelta, ToolUseStart, UsageReport
+from ...domain.events import Completed, StreamError, TextDelta, ThinkingDelta, ToolUseDelta, ToolUseStart, UsageReport
 
 
 def _chunk(completion_id: str, created: int, model_id: str, delta: dict, finish_reason=None) -> dict:
@@ -24,7 +24,13 @@ async def openai_stream(events, model_id: str):
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     async for event in events:
-        if isinstance(event, TextDelta):
+        if isinstance(event, ThinkingDelta):
+            delta = {"reasoning_content": event.text}
+            if event.signature:
+                delta["reasoning_signature"] = event.signature
+            yield f"data: {json.dumps(_chunk(completion_id, created, model_id, delta))}\n\n"
+
+        elif isinstance(event, TextDelta):
             yield f"data: {json.dumps(_chunk(completion_id, created, model_id, {'content': event.text}))}\n\n"
 
         elif isinstance(event, ToolUseStart):

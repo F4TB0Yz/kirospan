@@ -8,7 +8,7 @@ interesa el payload JSON, así que los CRC se descartan en lugar de verificarse.
 
 import json
 import struct
-from typing import AsyncIterator, Iterator
+from typing import AsyncIterator, Iterator, NamedTuple
 
 PRELUDE_SIZE = 12
 MESSAGE_CRC_SIZE = 4
@@ -18,6 +18,13 @@ _HEADER_TYPE_STRING = 7
 _HEADER_TYPE_BINARY = 8
 
 EVENTSTREAM_EXCEPTION_KEY = "_aws_eventstream_exception"
+
+
+class KiroFrame(NamedTuple):
+    """Payload Kiro junto al tipo declarado por AWS EventStream."""
+
+    event_type: str
+    payload: dict
 
 
 def _headers_of(message: bytes, header_length: int) -> dict[str, object]:
@@ -68,11 +75,8 @@ def _payload_of(message: bytes, header_length: int) -> bytes:
     return payload.rstrip(b"\x00 ")
 
 
-def decode_frames(buffer: bytearray) -> Iterator[dict]:
-    """Consume del buffer los frames completos y emite sus payloads JSON.
-
-    Muta `buffer`: elimina lo consumido y deja el resto para el siguiente chunk.
-    """
+def decode_kiro_frames(buffer: bytearray) -> Iterator[KiroFrame]:
+    """Consume frames completos conservando el header `:event-type`."""
     while len(buffer) >= PRELUDE_SIZE:
         total_length = struct.unpack_from(">I", buffer, 0)[0]
         if total_length < PRELUDE_SIZE + MESSAGE_CRC_SIZE or len(buffer) < total_length:
@@ -91,28 +95,44 @@ def decode_frames(buffer: bytearray) -> Iterator[dict]:
         except (json.JSONDecodeError, UnicodeDecodeError):
             continue
 
+        event_type = str(headers.get(":event-type") or "")
         if headers.get(":message-type") == "exception":
             message_text = (
                 parsed.get("message") or parsed.get("Message") or "Unknown Kiro stream error"
                 if isinstance(parsed, dict)
                 else "Unknown Kiro stream error"
             )
-            yield {
-                EVENTSTREAM_EXCEPTION_KEY: {
-                    "exception_type": str(headers.get(":exception-type") or "unknown"),
-                    "message": str(message_text),
-                }
-            }
+            yield KiroFrame(
+                event_type,
+                {
+                    EVENTSTREAM_EXCEPTION_KEY: {
+                        "exception_type": str(headers.get(":exception-type") or "unknown"),
+                        "message": str(message_text),
+                    }
+                },
+            )
             continue
 
         if isinstance(parsed, dict):
-            yield parsed
+            yield KiroFrame(event_type, parsed)
 
 
-async def read_aws_eventstream(response) -> AsyncIterator[dict]:
-    """Adapta una respuesta HTTP en streaming a un flujo de payloads JSON."""
+def decode_frames(buffer: bytearray) -> Iterator[dict]:
+    """Consume frames completos conservando el contrato legacy de payloads."""
+    for frame in decode_kiro_frames(buffer):
+        yield frame.payload
+
+
+async def read_kiro_frames(response) -> AsyncIterator[KiroFrame]:
+    """Adapta una respuesta HTTP a frames Kiro con tipo de evento."""
     buffer = bytearray()
     async for chunk in response.aiter_bytes():
         buffer.extend(chunk)
-        for event in decode_frames(buffer):
-            yield event
+        for frame in decode_kiro_frames(buffer):
+            yield frame
+
+
+async def read_aws_eventstream(response) -> AsyncIterator[dict]:
+    """Adapta una respuesta HTTP conservando el contrato legacy de payloads."""
+    async for frame in read_kiro_frames(response):
+        yield frame.payload

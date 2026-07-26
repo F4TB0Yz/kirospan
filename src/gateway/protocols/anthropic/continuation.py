@@ -1,9 +1,9 @@
 """Auto-continuación cuando el modelo anuncia trabajo pero no lo ejecuta.
 
-Con `tool_results` en el turno actual, algunos modelos responden con un parte de
-progreso ("ahora lo corrijo") y cierran el turno sin llamar a ninguna
-herramienta. Esa respuesta se mueve al historial y se pide explícitamente la
-acción prometida, hasta `MAX_AUTO_CONTINUATIONS` veces.
+Algunos modelos responden con un parte de progreso ("ahora lo corrijo") y
+cierran el turno sin ejecutar la acción prometida. Esa respuesta se mueve al
+historial y se pide explícitamente la acción, hasta `MAX_AUTO_CONTINUATIONS`
+veces.
 """
 
 import copy
@@ -19,10 +19,20 @@ MAX_AUTO_CONTINUATIONS = 2
 
 _FOLLOWUP_PROMISE_RE = re.compile(
     r"\b(?:corregiré|revisaré|ejecutaré|validaré|haré|aplicaré|continuaré|actualizaré|"
-    r"implementaré|pediré|repetiré|ajustaré|probaré|verificaré|cerraré)\b|"
+    r"implementaré|pediré|repetiré|ajustaré|probaré|verificaré|cerraré|buscaré|"
+    r"leeré|inspeccionaré|compararé|investigaré|mediré|mostraré|analizaré|"
+    r"consultaré|confirmaré|integraré|documentaré|guardaré|prepararé)\b|"
     r"\b(?:ahora|a continuación|después|luego)\b.{0,120}\b(?:corregir|revis|ejecut|"
     r"valid|hacer|aplic|continu|actualiz|implement|probar|verific|cerrar)|"
     r"\b(?:i will|i'll|next i(?:'ll| will)|now i(?:'ll| will))\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+_PENDING_TOOL_RE = re.compile(
+    r"\b(?:still running|still in progress|continues? running|"
+    r"sigue (?:corriendo|ejecutándose|en ejecución)|"
+    r"continúa (?:corriendo|ejecutándose|en ejecución)|"
+    r"(?:shell|script|comando|proceso).{0,60}(?:running|en ejecución|en curso))\b",
     re.IGNORECASE | re.DOTALL,
 )
 
@@ -30,6 +40,16 @@ _FOLLOWUP_PROMISE_RE = re.compile(
 def response_promises_followup(text: str) -> bool:
     """Solo cierto ante una promesa explícita en primera persona."""
     return bool(text and _FOLLOWUP_PROMISE_RE.search(" ".join(text.split())))
+
+
+def response_needs_continuation(text: str, *, after_tool_result: bool) -> bool:
+    """Detecta promesas o una espera inconclusa después de ejecutar herramienta."""
+    normalized = " ".join((text or "").split())
+    if response_promises_followup(normalized):
+        return True
+    return after_tool_result and (
+        not normalized or bool(_PENDING_TOOL_RE.search(normalized))
+    )
 
 
 def state_has_tool_results(state: dict) -> bool:
@@ -45,6 +65,19 @@ def build_continuation_state(state: dict, assistant_text: str) -> dict:
 
     previous_current = copy.deepcopy(conversation["currentMessage"])
     previous_user = previous_current.get("userInputMessage") or {}
+
+    # Si no hubo respuesta, todavía estamos en el mismo turno de herramienta.
+    # Conservamos sus resultados y añadimos la reclamación al texto existente.
+    if not assistant_text.strip():
+        original_content = str(previous_user.get("content") or "").strip()
+        previous_user["content"] = (
+            f"{original_content}\n\n{AUTO_CONTINUATION_PROMPT}"
+            if original_content
+            else AUTO_CONTINUATION_PROMPT
+        )
+        conversation["currentMessage"] = previous_current
+        return continued
+
     previous_user.pop("images", None)
 
     previous_context = previous_user.get("userInputMessageContext") or {}

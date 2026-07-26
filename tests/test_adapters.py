@@ -14,6 +14,7 @@ import pytest
 from gateway.adapters.outbound.aws_eventstream import (
     EVENTSTREAM_EXCEPTION_KEY,
     decode_frames,
+    decode_kiro_frames,
     read_aws_eventstream,
 )
 from gateway.adapters.outbound.clock import SystemClock
@@ -80,6 +81,15 @@ class _FakeStreamResponse:
 
 
 class TestDecodeFrames:
+    def test_typed_decoder_preserves_event_type(self):
+        frame = build_frame(
+            {"text": "plan", "signature": "firma"},
+            event_type="reasoningContentEvent",
+        )
+        decoded = list(decode_kiro_frames(bytearray(frame)))
+        assert decoded[0].event_type == "reasoningContentEvent"
+        assert decoded[0].payload == {"text": "plan", "signature": "firma"}
+
     def test_single_frame(self):
         buffer = bytearray(build_frame({"content": "hola"}))
         assert list(decode_frames(buffer)) == [{"content": "hola"}]
@@ -434,6 +444,37 @@ class _StubTokenService:
 
 
 class TestHttpKiroRuntimeClient:
+    async def test_reasoning_frame_is_wrapped_for_domain_decoder(self):
+        response = _FakeStreamResponse([
+            build_frame(
+                {"text": "plan", "signature": "firma"},
+                event_type="reasoningContentEvent",
+            )
+        ])
+        runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
+
+        events = [
+            event
+            async for event in runtime.stream(access_token="t", state={})
+        ]
+
+        assert events == [{
+            "reasoningContent": {"text": "plan", "signature": "firma"}
+        }]
+
+    async def test_reasoning_payload_is_detected_without_event_type_header(self):
+        response = _FakeStreamResponse([
+            build_frame({"text": "plan", "signature": "firma"}, event_type="")
+        ])
+        runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
+
+        events = [
+            event
+            async for event in runtime.stream(access_token="t", state={})
+        ]
+
+        assert events == [{"text": "plan", "signature": "firma"}]
+
     async def test_successful_stream_yields_events(self):
         response = _FakeStreamResponse([build_frame({"content": "hola"})])
         client = _StreamingClient([response])
