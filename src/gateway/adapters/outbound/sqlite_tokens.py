@@ -118,8 +118,11 @@ class SqliteTokenRepository:
         connection = sqlite3.connect(str(db_path), timeout=WRITE_TIMEOUT_SECONDS)
         try:
             connection.execute(
-                "UPDATE auth_kv SET value = ? WHERE key = ?",
-                (json.dumps(token), TOKEN_KEY),
+                """
+                INSERT INTO auth_kv (key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (TOKEN_KEY, json.dumps(token)),
             )
             connection.commit()
         finally:

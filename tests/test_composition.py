@@ -38,6 +38,55 @@ def config(tmp_path):
 
 
 class TestCreateApp:
+    @pytest.mark.parametrize(
+        ("method", "path", "body"),
+        [
+            (
+                "post",
+                "/v1/chat/completions",
+                {
+                    "model": "claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "hola"}],
+                },
+            ),
+            (
+                "post",
+                "/v1/messages",
+                {
+                    "model": "claude-sonnet-4",
+                    "messages": [{"role": "user", "content": "hola"}],
+                },
+            ),
+            ("get", "/v1/models", None),
+        ],
+    )
+    def test_kiro_auth_errors_return_401_without_leaking_details(
+        self, config, monkeypatch, method, path, body
+    ):
+        from gateway.application.auth import TokenService
+        from gateway.composition import create_app
+        from gateway.domain.errors import AuthError
+
+        async def fail_auth(_self, **_kwargs):
+            raise AuthError(
+                "token secreto en /Users/alguien/.local/share/kiro/data.sqlite3"
+            )
+
+        monkeypatch.setattr(TokenService, "ensure", fail_auth)
+
+        with TestClient(create_app(config), raise_server_exceptions=False) as client:
+            response = client.request(
+                method,
+                path,
+                headers={"x-api-key": "secreta"},
+                json=body,
+            )
+
+        assert response.status_code == 401
+        assert response.json() == {"detail": "Credenciales Kiro no disponibles"}
+        assert "token secreto" not in response.text
+        assert "data.sqlite3" not in response.text
+
     def test_health_does_not_require_auth(self, config):
         from gateway.composition import create_app
 

@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 
 from .adapters.inbound.http.auth_middleware import build_auth_middleware
 from .adapters.inbound.http.routers.anthropic import build_anthropic_router
@@ -21,6 +22,7 @@ from .adapters.outbound.sqlite_tokens import SqliteTokenRepository
 from .application.auth import TokenService
 from .application.models import ModelCatalog
 from .config import GatewayConfig
+from .domain.errors import AuthError
 
 
 def create_app(config: GatewayConfig) -> FastAPI:
@@ -58,6 +60,13 @@ def create_app(config: GatewayConfig) -> FastAPI:
 
     app = FastAPI(title="KiroSpan", version="3.0.0", lifespan=lifespan)
     app.middleware("http")(build_auth_middleware(config.gateway_key))
+
+    @app.exception_handler(AuthError)
+    async def handle_auth_error(_request, _exc):
+        return JSONResponse(
+            status_code=401,
+            content={"detail": "Credenciales Kiro no disponibles"},
+        )
 
     def runtime_client_factory():
         return HttpKiroRuntimeClient(state["client"], config, state["token_service"])

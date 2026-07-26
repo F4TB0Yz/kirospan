@@ -60,7 +60,13 @@ class ChatService:
         self._runtime_client = runtime_client
         self._sleep = sleep
 
-    async def run(self, *, access_token: str, state: dict):
+    async def run(
+        self,
+        *,
+        access_token: str,
+        state: dict,
+        propagate_upstream_errors: bool = False,
+    ):
         """Genera eventos y reintenta una excepción transitoria solo antes de emitir."""
         tool_indices: dict[str, int] = {}
         active_tool_id: str | None = None
@@ -176,6 +182,8 @@ class ChatService:
                     await self._sleep(TRANSIENT_RETRY_DELAY_SECONDS)
                     continue
 
+                if propagate_upstream_errors:
+                    raise
                 yield StreamError(str(exc))
                 finish_reason = "tool_calls" if saw_tool_use else "stop"
                 yield Completed(finish_reason)

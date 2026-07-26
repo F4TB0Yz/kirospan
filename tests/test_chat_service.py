@@ -160,6 +160,20 @@ class TestChatService:
         events = await collect(service, access_token="t", state={})
         assert events == [StreamError("caido"), Completed("stop")]
 
+    async def test_upstream_error_is_propagated_for_non_stream_consumers(self):
+        error = UpstreamError("caido", status_code=504)
+        service = ChatService(_FailingRuntimeClient(error))
+
+        with pytest.raises(UpstreamError) as caught:
+            await collect(
+                service,
+                access_token="t",
+                state={},
+                propagate_upstream_errors=True,
+            )
+
+        assert caught.value is error
+
     async def test_retryable_stream_exception_is_retried_once_before_output(self, caplog):
         transient = UpstreamError(
             "unexpected error, please try again",
