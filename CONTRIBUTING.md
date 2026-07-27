@@ -31,6 +31,24 @@ Unit tests must not require a real Kiro account or network access. Use the fakes
 5. Check staged files for secrets and generated artifacts.
 6. Update README, architecture notes, or notices when behavior or attribution changes.
 
+Documentation changes should keep these sources synchronized:
+
+- endpoint, request, or response changes: `README.md` and `docs/api.md`;
+- install, authentication, or runtime changes: `README.md` and
+  `docs/troubleshooting.md`;
+- layer or dependency changes: `docs/architecture.md`;
+- credential or exposure changes: `SECURITY.md`.
+
+Before submitting documentation-only changes, run:
+
+```bash
+git diff --check
+git status --short
+```
+
+Verify every documented command from a clean shell or state the prerequisite
+that makes it runnable.
+
 ## Style
 
 - Prefer small functions and explicit dependency injection.
