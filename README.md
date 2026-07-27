@@ -13,6 +13,7 @@ An unofficial local gateway that exposes the Kiro runtime through OpenAI- and An
 - Tested Hermes Agent support, including complete tool-call round trips.
 - Claude Code subagent and tool-result continuity.
 - Base64 PNG, JPEG, GIF, and WebP input images.
+- Native reasoning output for compatible Kiro models in OpenAI and Anthropic formats.
 - Automatic Kiro access-token refresh and persistence.
 - Model-ID normalization, including Claude Code's `[1m]` modifier.
 - API-key authentication with constant-time comparison.
@@ -35,6 +36,16 @@ See [SECURITY.md](SECURITY.md) for the complete guidance.
 - Python 3.11 or newer.
 - A working `kiro-cli` installation authenticated with `kiro-cli auth login`.
 - macOS is the primary tested platform. Linux's standard Kiro CLI SQLite location is also recognized; the Keychain fallback is macOS-specific.
+
+## Choose a setup
+
+| Goal | Start here |
+| --- | --- |
+| Use Hermes Agent on macOS | [Quick installation for Hermes Agent](#quick-installation-for-hermes-agent-macos) |
+| Use Claude Code, OpenCode, or an SDK | [Manual/development installation](#manualdevelopment-installation) |
+| Call the HTTP endpoints directly | [API reference](docs/api.md) |
+| Diagnose installation, auth, or model issues | [Troubleshooting](docs/troubleshooting.md) |
+| Contribute code | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## Quick installation for Hermes Agent (macOS)
 
@@ -101,8 +112,11 @@ Generate a strong local gateway key and start the server:
 
 ```bash
 export KIRO_GATEWAY_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
-./start.sh
+kirospan
 ```
+
+`./start.sh` is also available for repository-local development. It activates
+`.venv` or `venv` and runs the compatibility entry point.
 
 The application does not automatically load `.env`. If you maintain local environment variables in a file, load them explicitly in your shell and never commit that file.
 
@@ -197,6 +211,7 @@ The installer only adds `providers.kirospan` and its secret; it intentionally le
 | `POST` | `/v1/messages/count_tokens` | Yes | Approximate Anthropic token count |
 
 Authentication accepts either `Authorization: Bearer <key>` or `x-api-key: <key>`.
+See [docs/api.md](docs/api.md) for request examples, accepted fields, streaming behavior, reasoning controls, and error semantics.
 
 ## Configuration
 
@@ -213,6 +228,22 @@ Authentication accepts either `Authorization: Bearer <key>` or `x-api-key: <key>
 
 Current user messages may contain up to 10 base64 images. Each decoded image must be smaller than 10 MB and use PNG, JPEG/JPG, GIF, or WebP. Historical images are not resent to Kiro. Remote image URLs are intentionally unsupported.
 
+## Reasoning / thinking
+
+KiroSpan forwards reasoning emitted by compatible Kiro models without mixing it
+into visible answer text:
+
+- OpenAI streaming responses use `choices[].delta.reasoning_content`;
+- OpenAI non-streaming responses use `choices[].message.reasoning_content`;
+- Anthropic responses use native `thinking` blocks and `thinking_delta` events.
+
+OpenAI requests may set `reasoning_effort`. Anthropic requests may set
+`thinking` and `output_config.effort`. Supported effort values are `low`,
+`medium`, `high`, `xhigh`, and `max`; `minimal` is treated as `low`.
+Availability still depends on the selected model and the events returned by
+Kiro. See [Reasoning and thinking](docs/api.md#reasoning-and-thinking) for the
+exact mappings and disable behavior.
+
 ## Development and tests
 
 ```bash
@@ -227,7 +258,7 @@ export KIRO_GATEWAY_KEY='your-local-key'
 python -m pytest -m e2e tests/test_e2e_live_gateway.py
 ```
 
-Architecture and dependency rules are documented in [docs/architecture.md](docs/architecture.md). Contribution guidance is in [CONTRIBUTING.md](CONTRIBUTING.md).
+Architecture and dependency rules are documented in [docs/architecture.md](docs/architecture.md). Contribution guidance is in [CONTRIBUTING.md](CONTRIBUTING.md). For common runtime failures, see [docs/troubleshooting.md](docs/troubleshooting.md).
 
 ## Attribution
 

@@ -40,7 +40,7 @@ Pure translation between wire contracts:
 
 - `openai/`: model catalogs and streaming/non-streaming presenters.
 - `anthropic/`: request conversion, response conversion, SSE presentation, and continuation policy.
-- `kiro/`: conversation-state construction, tool specifications, bracket-tool fallback parsing, and runtime event decoding.
+- `kiro/`: conversation-state construction, tool specifications, reasoning-control mapping, bracket-tool fallback parsing, and runtime event decoding.
 
 Keeping translation outside routers makes protocol behavior testable without a server or network.
 
@@ -88,12 +88,18 @@ For a streamed chat request:
 1. Authentication middleware validates the gateway key.
 2. The inbound router converts the OpenAI or Anthropic body to a common message representation.
 3. Model IDs and images are validated by domain functions.
-4. Kiro protocol builders create the alternating conversation state and tool context.
+4. Kiro protocol builders create the alternating conversation state, tool context, and model-specific reasoning controls.
 5. `TokenService` supplies a valid access token and `ModelCatalog` resolves the profile ARN.
 6. The outbound runtime adapter streams AWS EventStream frames.
-7. `ChatService` emits domain events.
-8. The selected OpenAI or Anthropic presenter serializes those events to the client protocol.
+7. `ChatService` emits text, reasoning, tool, usage, and completion domain events.
+8. The selected OpenAI or Anthropic presenter serializes those events without mixing reasoning into visible text.
 9. A single 403 retry may refresh the token and replay the upstream call.
+
+Reasoning controls are isolated in `protocols/kiro/reasoning.py`. OpenAI's
+`reasoning_effort` and Anthropic's `thinking`/`output_config` inputs map to
+Kiro's model-specific fields there. Output reasoning follows the reverse path:
+the event decoder identifies Kiro reasoning frames, `ChatService` emits
+`ThinkingDelta`, and each presenter produces its native client representation.
 
 ## Compatibility shim
 
