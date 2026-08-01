@@ -45,6 +45,9 @@ The repository `.gitignore` excludes common forms of these files, but contributo
 - Upstream requests are sent only to region-derived Kiro management, runtime, and desktop-auth endpoints.
 - Remote image URLs are rejected; only caller-provided base64 data is processed.
 - `/health` intentionally omits the absolute credential-database path.
+- Upstream error bodies and stream exception messages are not returned to
+  clients or written to logs. Status codes and request IDs are retained for
+  diagnosis.
 - Client-provided tools are descriptions only: the gateway does not execute tool calls. Execution happens in the calling client.
 
 ## Dependency updates

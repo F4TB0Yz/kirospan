@@ -31,6 +31,18 @@ The gateway can use the credentials of your local Kiro CLI installation. Treat i
 
 See [SECURITY.md](SECURITY.md) for the complete guidance.
 
+## Responsible use
+
+KiroSpan is an unofficial interoperability tool built on interfaces that may
+change or stop working without notice. Use it only with accounts and
+credentials you are authorized to control.
+
+- Do not share or resell credentials or gateway access.
+- Do not expose it as a public or multi-user service.
+- Do not use it to evade quotas, suspensions, access controls, or provider
+  policies.
+- Review and follow the terms and policies that apply to your account and clients.
+
 ## Requirements
 
 - Python 3.11 or newer.

@@ -74,11 +74,13 @@ class TokenRefreshTests(unittest.IsolatedAsyncioTestCase):
         save.assert_called_once_with(result)
 
     async def test_persistent_upstream_error_is_a_valid_openai_chunk(self):
+        private_detail = "private prompt fragment: customer-123"
+
         class Response:
             status_code = 403
 
             async def aread(self):
-                return b'{"message":"invalid token"}'
+                return f'{{"message":"{private_detail}"}}'.encode()
 
         class StreamContext:
             async def __aenter__(self):
@@ -91,9 +93,10 @@ class TokenRefreshTests(unittest.IsolatedAsyncioTestCase):
             def stream(self, *args, **kwargs):
                 return StreamContext()
 
-        lines = [line async for line in _stream_runtime(
-            Client(), "rejected", {"profileArn": "profile"}, "gpt-5.6-sol", _auth_retry=True
-        )]
+        with self.assertLogs("kirospan", level="ERROR") as logs:
+            lines = [line async for line in _stream_runtime(
+                Client(), "rejected", {"profileArn": "profile"}, "gpt-5.6-sol", _auth_retry=True
+            )]
         payloads = [
             json.loads(line.removeprefix("data: ").strip())
             for line in lines
@@ -102,6 +105,7 @@ class TokenRefreshTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(payloads)
         self.assertTrue(all("choices" in payload for payload in payloads))
         self.assertEqual(payloads[-1]["choices"][0]["finish_reason"], "stop")
+        self.assertNotIn(private_detail, "".join(lines + logs.output))
 
 
 class RequestCompatibilityTests(unittest.TestCase):

@@ -591,14 +591,15 @@ class TestHttpKiroRuntimeClient:
         assert "contenido-privado" not in str(error.value)
         assert "contenido-privado" not in caplog.text
 
-    async def test_eventstream_exception_becomes_retryable_upstream_error(self):
+    async def test_eventstream_exception_becomes_retryable_upstream_error(self, caplog):
+        private_detail = "private prompt fragment: customer-123"
         response = _FakeStreamResponse(
             [
                 build_frame(
                     {
                         "message": (
                             "Encountered an unexpected error when processing the request, "
-                            "please try again."
+                            f"please try again. {private_detail}"
                         )
                     },
                     event_type="",
@@ -616,7 +617,9 @@ class TestHttpKiroRuntimeClient:
         assert error.value.status_code == 502
         assert error.value.retryable is True
         assert error.value.request_id == "request-123"
-        assert "unexpected error" in str(error.value)
+        assert str(error.value) == "Kiro stream request failed"
+        assert private_detail not in str(error.value)
+        assert private_detail not in caplog.text
 
     async def test_non_transient_eventstream_exception_is_not_retryable(self):
         response = _FakeStreamResponse(
@@ -648,14 +651,22 @@ class TestHttpKiroRuntimeClient:
             assert headers[name] == value
         assert client.calls[0]["url"] == CONFIG.runtime_url
 
-    async def test_non_403_error_raises_upstream_error(self):
-        response = _FakeStreamResponse([b'{"message":"Invalid model ID"}'], status_code=400)
+    async def test_non_403_error_raises_upstream_error_without_leaking_body(self, caplog):
+        private_detail = "private prompt fragment: customer-123"
+        response = _FakeStreamResponse(
+            [f'{{"message":"{private_detail}"}}'.encode()],
+            status_code=400,
+            headers={"x-amzn-requestid": "request-400"},
+        )
         runtime = HttpKiroRuntimeClient(_StreamingClient([response]), CONFIG)
 
         with pytest.raises(UpstreamError) as error:
             [event async for event in runtime.stream(access_token="t", state={})]
         assert error.value.status_code == 400
-        assert "Invalid model ID" in str(error.value)
+        assert error.value.request_id == "request-400"
+        assert str(error.value) == "Kiro runtime request failed with HTTP 400"
+        assert private_detail not in str(error.value)
+        assert private_detail not in caplog.text
 
     async def test_403_refreshes_the_token_and_retries_once(self):
         rejected = _FakeStreamResponse([b"denegado"], status_code=403)

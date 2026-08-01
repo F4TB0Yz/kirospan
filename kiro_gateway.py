@@ -352,7 +352,7 @@ class _ShimRuntimeClient:
                     yield event
                 return
 
-            body = await response.aread()
+            await response.aread()
             if response.status_code == 403 and not _auth_retry:
                 refreshed = await globals()["_ensure_token"](
                     self._client, force_refresh=True, rejected_access_token=access_token
@@ -368,10 +368,9 @@ class _ShimRuntimeClient:
                     yield event
                 return
 
-            detail = body[:500].decode(errors="replace")
-            log.error(f"Kiro runtime HTTP {response.status_code}: {detail}")
+            log.error("Kiro runtime HTTP %s", response.status_code)
             raise UpstreamError(
-                f"Kiro runtime error {response.status_code}: {detail}",
+                f"Kiro runtime request failed with HTTP {response.status_code}",
                 status_code=response.status_code,
             )
 

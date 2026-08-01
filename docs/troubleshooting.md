@@ -150,6 +150,8 @@ Visible answer text remains separate from reasoning by design.
 Increase `KIRO_RUNTIME_TIMEOUT` for slow generations. KiroSpan retries a safe
 transient failure once before public output begins; it does not replay a request
 after visible output because that could duplicate content or tool calls.
+Public errors and logs omit upstream response bodies. Use the HTTP status and
+request ID for correlation; do not add raw bodies when sharing diagnostics.
 
 ## Logs and safe reporting
 
