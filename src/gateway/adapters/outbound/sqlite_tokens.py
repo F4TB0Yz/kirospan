@@ -7,7 +7,8 @@ se delega a un hilo para no bloquear el event loop.
 
 Nota: kiro-cli almacena el token real en el macOS Keychain y puede dejar un
 placeholder en SQLite. Este módulo incluye un fallback al Keychain cuando el
-token de SQLite parece inválido.
+token de SQLite parece inválido. Los tokens obtenidos así se mantienen en
+memoria para no degradar la protección del Keychain escribiéndolos en SQLite.
 """
 
 import asyncio
@@ -53,6 +54,8 @@ class SqliteTokenRepository:
 
     def __init__(self, db_paths: tuple[Path, ...]) -> None:
         self._db_paths = db_paths
+        self._keychain_backed = False
+        self._keychain_token_cache: dict | None = None
 
     def _find_db(self) -> Path | None:
         for path in self._db_paths:
@@ -68,11 +71,20 @@ class SqliteTokenRepository:
         path = self._find_db()
         return str(path) if path else None
 
+    def _load_keychain_token(self) -> dict | None:
+        if self._keychain_token_cache is not None:
+            return dict(self._keychain_token_cache)
+        token = _read_keychain_token()
+        if _token_looks_valid(token):
+            self._keychain_backed = True
+            self._keychain_token_cache = dict(token)
+        return token
+
     def _load_sync(self) -> dict | None:
         db_path = self._find_db()
         if not db_path:
             log.error("kiro-cli DB not found. Run 'kiro-cli auth login' first.")
-            return _read_keychain_token()
+            return self._load_keychain_token()
         try:
             connection = sqlite3.connect(str(db_path))
             try:
@@ -83,35 +95,36 @@ class SqliteTokenRepository:
                 connection.close()
         except sqlite3.Error as exc:
             log.warning(f"Failed to read kiro-cli token: {exc}")
-            return _read_keychain_token()
+            return self._load_keychain_token()
 
         if not row:
-            return _read_keychain_token()
+            return self._load_keychain_token()
         try:
             token = json.loads(row[0])
         except (TypeError, json.JSONDecodeError) as exc:
             log.warning(f"Failed to parse kiro-cli token: {exc}")
-            return _read_keychain_token()
+            return self._load_keychain_token()
 
         # kiro-cli stores the real token in macOS Keychain; SQLite may have
         # a placeholder. Fall back to Keychain if the SQLite token looks dummy.
         if not _token_looks_valid(token):
             log.info("SQLite token looks invalid (too short), trying macOS Keychain...")
-            keychain_token = _read_keychain_token()
+            keychain_token = self._load_keychain_token()
             if _token_looks_valid(keychain_token):
-                # Sync keychain token back to SQLite for future reads
-                try:
-                    self._save_sync(keychain_token)
-                    log.info("Synced valid token from Keychain to SQLite")
-                except Exception as exc:
-                    log.debug(f"Failed to sync keychain token to SQLite: {exc}")
                 return keychain_token
             # Return whatever we have
             return token
 
+        self._keychain_backed = False
+        self._keychain_token_cache = None
         return token
 
     def _save_sync(self, token: dict) -> None:
+        if self._keychain_backed:
+            self._keychain_token_cache = dict(token)
+            log.info("Kept refreshed Keychain token in memory; SQLite was not modified")
+            return
+
         db_path = self._find_db()
         if not db_path:
             raise RuntimeError("kiro-cli DB not found")
