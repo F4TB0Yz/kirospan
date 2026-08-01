@@ -148,6 +148,11 @@ class TestCreateApp:
         # 404 indicaría que el router no se registró.
         assert all(status != 404 for status in responses.values())
 
+    def test_public_api_reports_release_version(self, config):
+        from gateway.composition import create_app
+
+        assert create_app(config).version == "1.0.0"
+
     def test_lifespan_closes_the_http_client(self, config):
         from gateway.composition import create_app
 

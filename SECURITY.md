@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Security fixes are applied to the latest `3.x` release and the current default branch. Older snapshots are not supported.
+Security fixes are applied to the latest `1.x` release and the current default branch. Older snapshots are not supported.
 
 ## Reporting a vulnerability
 
