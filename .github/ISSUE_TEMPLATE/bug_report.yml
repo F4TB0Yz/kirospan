@@ -1,0 +1,58 @@
+name: Bug report
+description: Report a reproducible problem in KiroSpan
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include API keys, Kiro tokens, database files, private prompts,
+        model output, personal paths, or unredacted logs. Report security issues
+        privately as described in SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: KiroSpan version or commit
+      placeholder: 3.0.0 or commit SHA
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Linux
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: Describe what happened and what you expected.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use synthetic credentials and redact user content.
+      placeholder: Steps, request shape, and relevant configuration
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Include status codes and request IDs only when useful.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checks
+      options:
+        - label: I removed credentials, prompts, model output, and personal data.
+          required: true
+        - label: This is not a private security vulnerability report.
+          required: true

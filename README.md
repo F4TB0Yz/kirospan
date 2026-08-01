@@ -5,6 +5,12 @@ An unofficial local gateway that exposes the Kiro runtime through OpenAI- and An
 > [!IMPORTANT]
 > This project is independent and is not affiliated with, endorsed by, or sponsored by Amazon, AWS, Anthropic, OpenAI, or Kiro. You are responsible for complying with the terms that apply to your Kiro account and clients.
 
+> [!WARNING]
+> KiroSpan is beta software that depends on provider behavior not controlled by
+> this project. Compatibility can break without notice, and a provider may
+> restrict or suspend access under its own terms or policies. KiroSpan cannot
+> guarantee account availability or suitability for production workloads.
+
 ## Features
 
 - OpenAI-compatible `/v1/chat/completions` and `/v1/models` endpoints.
