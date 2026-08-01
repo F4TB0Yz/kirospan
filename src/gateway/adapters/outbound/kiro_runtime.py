@@ -18,8 +18,6 @@ from .aws_eventstream import (
     read_kiro_frames,
 )
 
-ERROR_DETAIL_LIMIT = 500
-
 _TRANSIENT_EXCEPTION_TYPES = {
     "internalservererror",
     "internalserverexception",
@@ -112,7 +110,7 @@ class HttpKiroRuntimeClient:
                                     retryable,
                                 )
                                 raise UpstreamError(
-                                    f"Kiro stream error: {message}",
+                                    "Kiro stream request failed",
                                     status_code=502,
                                     retryable=retryable,
                                     request_id=request_id,
@@ -136,17 +134,22 @@ class HttpKiroRuntimeClient:
                         ) from exc
                     return
 
-                body = await response.aread()
+                await response.aread()
                 if response.status_code == 403 and not _auth_retry and self._token_service:
                     async for event in self._retry_with_fresh_token(access_token, state):
                         yield event
                     return
 
-                detail = body[:ERROR_DETAIL_LIMIT].decode(errors="replace")
-                log.error(f"Kiro runtime HTTP {response.status_code}: {detail}")
+                request_id = _request_id_of(response)
+                log.error(
+                    "Kiro runtime HTTP %s request_id=%s",
+                    response.status_code,
+                    request_id or "unknown",
+                )
                 raise UpstreamError(
-                    f"Kiro runtime error {response.status_code}: {detail}",
+                    f"Kiro runtime request failed with HTTP {response.status_code}",
                     status_code=response.status_code,
+                    request_id=request_id,
                 )
         except httpx.TimeoutException as exc:
             raise UpstreamError("Kiro runtime timeout", status_code=504) from exc
