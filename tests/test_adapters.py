@@ -308,7 +308,7 @@ class TestSqliteTokenRepository:
         loaded = await SqliteTokenRepository((sqlite_db,)).load()
         assert loaded == keychain_token
 
-    async def test_keychain_token_is_synced_back_to_sqlite(self, sqlite_db, monkeypatch):
+    async def test_keychain_token_is_cached_without_modifying_sqlite(self, sqlite_db, monkeypatch):
         import gateway.adapters.outbound.sqlite_tokens as module
 
         keychain_token = {"access_token": "w" * 60}
@@ -327,6 +327,45 @@ class TestSqliteTokenRepository:
 
         _no_keychain(monkeypatch)
         assert await repository.load() == keychain_token
+
+        connection = __import__("sqlite3").connect(sqlite_db)
+        stored = connection.execute(
+            "SELECT value FROM auth_kv WHERE key = ?", (TOKEN_KEY,)
+        ).fetchone()
+        connection.close()
+        assert json.loads(stored[0]) == {"access_token": "corto"}
+
+    async def test_refreshed_keychain_token_stays_in_memory(self, sqlite_db, monkeypatch):
+        import gateway.adapters.outbound.sqlite_tokens as module
+
+        keychain_token = {"access_token": "w" * 60}
+        refreshed_token = {
+            "access_token": "r" * 60,
+            "refresh_token": "refresh-secreto",
+        }
+        monkeypatch.setattr(module, "_read_keychain_token", lambda: keychain_token)
+
+        connection = __import__("sqlite3").connect(sqlite_db)
+        connection.execute(
+            "UPDATE auth_kv SET value = ? WHERE key = ?",
+            (json.dumps({"access_token": "corto"}), TOKEN_KEY),
+        )
+        connection.commit()
+        connection.close()
+
+        repository = SqliteTokenRepository((sqlite_db,))
+        await repository.load()
+        await repository.save(refreshed_token)
+
+        _no_keychain(monkeypatch)
+        assert await repository.load() == refreshed_token
+
+        connection = __import__("sqlite3").connect(sqlite_db)
+        stored = connection.execute(
+            "SELECT value FROM auth_kv WHERE key = ?", (TOKEN_KEY,)
+        ).fetchone()
+        connection.close()
+        assert json.loads(stored[0]) == {"access_token": "corto"}
 
     async def test_placeholder_without_keychain_returns_the_placeholder(self, sqlite_db, monkeypatch):
         _no_keychain(monkeypatch)
