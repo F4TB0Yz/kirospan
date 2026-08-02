@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kirospan"
-version = "3.0.0"
+version = "1.0.0"
 description = "Local OpenAI- and Anthropic-compatible gateway for the Kiro runtime"
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.11"
 keywords = ["kiro", "openai", "anthropic", "gateway", "fastapi", "hermes-agent"]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",

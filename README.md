@@ -6,8 +6,9 @@ An unofficial local gateway that exposes the Kiro runtime through OpenAI- and An
 > This project is independent and is not affiliated with, endorsed by, or sponsored by Amazon, AWS, Anthropic, OpenAI, or Kiro. You are responsible for complying with the terms that apply to your Kiro account and clients.
 
 > [!WARNING]
-> KiroSpan is beta software that depends on provider behavior not controlled by
-> this project. Compatibility can break without notice, and a provider may
+> KiroSpan v1 provides a stable documented local API, but depends on provider
+> behavior not controlled by this project. Upstream compatibility can break
+> without notice, and a provider may
 > restrict or suspend access under its own terms or policies. KiroSpan cannot
 > guarantee account availability or suitability for production workloads.
 
@@ -53,7 +54,12 @@ credentials you are authorized to control.
 
 - Python 3.11 or newer.
 - A working `kiro-cli` installation authenticated with `kiro-cli auth login`.
-- macOS is the primary tested platform. Linux's standard Kiro CLI SQLite location is also recognized; the Keychain fallback is macOS-specific.
+
+| Platform | Status | Notes |
+| --- | --- | --- |
+| macOS | Supported | Primary tested platform; SQLite and Keychain credentials supported. |
+| Linux | Experimental | Standard Kiro CLI SQLite location recognized; no managed service installer. |
+| Windows | Not supported | Credential location, installer, service integration, and CI remain unverified. |
 
 ## Choose a setup
 

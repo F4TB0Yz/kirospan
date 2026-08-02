@@ -58,7 +58,7 @@ def create_app(config: GatewayConfig) -> FastAPI:
             await client.aclose()
             state.clear()
 
-    app = FastAPI(title="KiroSpan", version="3.0.0", lifespan=lifespan)
+    app = FastAPI(title="KiroSpan", version="1.0.0", lifespan=lifespan)
     app.middleware("http")(build_auth_middleware(config.gateway_key))
 
     @app.exception_handler(AuthError)
