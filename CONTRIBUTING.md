@@ -56,6 +56,22 @@ that makes it runnable.
 - Keep public documentation and error messages understandable without local context.
 - Comments should explain constraints and decisions rather than restate code.
 
+## Releases
+
+Release Please prepares version bumps, `CHANGELOG.md`, tags, and GitHub Releases.
+Use Conventional Commit prefixes in squash-merge titles:
+
+- `fix:` creates a patch candidate;
+- `feat:` creates a minor candidate;
+- `feat!:` or `BREAKING CHANGE:` creates a major candidate;
+- `docs:` and `deps:` may be included in Python release notes.
+
+The bot opens a release PR; merging that PR publishes the release. Maintainers
+must configure the `RELEASE_PLEASE_TOKEN` Actions secret with a fine-grained
+token allowed to manage contents and pull requests so CI runs on bot-created
+PRs. The workflow falls back to `GITHUB_TOKEN`, but GitHub suppresses CI events
+created with that token.
+
 ## Security-sensitive changes
 
 Changes to authentication, token persistence, URL construction, public bind behavior, or logging require explicit security tests. Never weaken loopback defaults or introduce a built-in API key for convenience.

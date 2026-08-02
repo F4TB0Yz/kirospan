@@ -10,6 +10,7 @@ import httpx
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from . import __version__
 from .adapters.inbound.http.auth_middleware import build_auth_middleware
 from .adapters.inbound.http.routers.anthropic import build_anthropic_router
 from .adapters.inbound.http.routers.chat import build_chat_router
@@ -58,7 +59,7 @@ def create_app(config: GatewayConfig) -> FastAPI:
             await client.aclose()
             state.clear()
 
-    app = FastAPI(title="KiroSpan", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="KiroSpan", version=__version__, lifespan=lifespan)
     app.middleware("http")(build_auth_middleware(config.gateway_key))
 
     @app.exception_handler(AuthError)

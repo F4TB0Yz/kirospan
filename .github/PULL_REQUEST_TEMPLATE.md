@@ -1,6 +1,8 @@
 ## Summary
 
 Describe the problem and the smallest change that solves it.
+Use a Conventional Commit prefix in the PR title (`fix:`, `feat:`, `docs:`, or
+`deps:`) so Release Please can classify the squash merge.
 
 ## Verification
 

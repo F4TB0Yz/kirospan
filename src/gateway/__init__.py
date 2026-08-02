@@ -11,3 +11,5 @@ Capas, con las dependencias apuntando hacia dentro:
 - `application`: casos de uso, dependen solo de los puertos.
 - `adapters`: FastAPI, httpx y SQLite.
 """
+
+__version__ = "1.0.0"  # x-release-please-version

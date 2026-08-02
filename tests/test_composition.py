@@ -9,6 +9,7 @@ el cliente de bajo nivel.
 import pytest
 from fastapi.testclient import TestClient
 
+from gateway import __version__
 from gateway.config import GatewayConfig
 
 
@@ -151,7 +152,7 @@ class TestCreateApp:
     def test_public_api_reports_release_version(self, config):
         from gateway.composition import create_app
 
-        assert create_app(config).version == "1.0.0"
+        assert create_app(config).version == __version__
 
     def test_lifespan_closes_the_http_client(self, config):
         from gateway.composition import create_app
