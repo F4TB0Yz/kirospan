@@ -15,6 +15,7 @@ from .adapters.inbound.http.auth_middleware import build_auth_middleware
 from .adapters.inbound.http.routers.anthropic import build_anthropic_router
 from .adapters.inbound.http.routers.chat import build_chat_router
 from .adapters.inbound.http.routers.meta import build_meta_router
+from .adapters.inbound.http.routers.responses import build_responses_router
 from .adapters.outbound.clock import SystemClock
 from .adapters.outbound.kiro_auth import DesktopTokenRefresher
 from .adapters.outbound.kiro_models import HttpModelCatalogSource
@@ -84,6 +85,9 @@ def create_app(config: GatewayConfig) -> FastAPI:
     app.include_router(build_chat_router(_LazyTokenService(state), _LazyModelCatalog(state), runtime_client_factory))
     app.include_router(
         build_anthropic_router(_LazyTokenService(state), _LazyModelCatalog(state), runtime_client_factory)
+    )
+    app.include_router(
+        build_responses_router(_LazyTokenService(state), _LazyModelCatalog(state), runtime_client_factory)
     )
     return app
 
