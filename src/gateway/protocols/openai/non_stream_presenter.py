@@ -3,7 +3,16 @@
 import time
 import uuid
 
-from ...domain.events import Completed, StreamError, TextDelta, ThinkingDelta, ToolUseDelta, ToolUseStart, UsageReport
+from ...domain.events import (
+    Completed,
+    Refusal,
+    StreamError,
+    TextDelta,
+    ThinkingDelta,
+    ToolUseDelta,
+    ToolUseStart,
+    UsageReport,
+)
 
 
 async def openai_non_stream(events, model_id: str) -> dict:
@@ -18,6 +27,7 @@ async def openai_non_stream(events, model_id: str) -> dict:
     tool_calls: list[dict] = []
     usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
     finish_reason = "stop"
+    refusal = None
 
     async for event in events:
         if isinstance(event, ThinkingDelta):
@@ -48,11 +58,16 @@ async def openai_non_stream(events, model_id: str) -> dict:
             # acumulando contenido; se conserva ese comportamiento.
             pass
 
+        elif isinstance(event, Refusal):
+            refusal = event.explanation
+
         elif isinstance(event, Completed):
             finish_reason = event.finish_reason
 
     content = "".join(full_content_parts).strip()
     message = {"role": "assistant", "content": content if content else None}
+    if refusal:
+        message["refusal"] = refusal
     if reasoning_parts:
         message["reasoning_content"] = "".join(reasoning_parts)
         if reasoning_signature:

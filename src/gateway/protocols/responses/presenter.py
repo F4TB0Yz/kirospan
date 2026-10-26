@@ -22,6 +22,7 @@ from typing import Any
 
 from ...domain.events import (
     Completed,
+    Refusal,
     StreamError,
     TextDelta,
     ThinkingDelta,
@@ -175,6 +176,9 @@ async def responses_non_stream(events, model_id: str) -> dict:
         elif isinstance(event, TextDelta):
             text_parts.append(event.text)
 
+        elif isinstance(event, Refusal):
+            text_parts.append(event.explanation)
+
         elif isinstance(event, ToolUseStart):
             tool_calls.append(
                 {
@@ -248,17 +252,18 @@ async def responses_stream(events, model_id: str):
         if isinstance(event, ThinkingDelta):
             continue
 
-        elif isinstance(event, TextDelta):
+        elif isinstance(event, (TextDelta, Refusal)):
+            text = event.text if isinstance(event, TextDelta) else event.explanation
             for line in _open_text_item(state):
                 yield line
-            state.text_parts.append(event.text)
+            state.text_parts.append(text)
             yield _sse(
                 "response.output_text.delta",
                 {
                     "item_id": state.text_item_id,
                     "output_index": state.text_index(),
                     "content_index": 0,
-                    "delta": event.text,
+                    "delta": text,
                 },
             )
 

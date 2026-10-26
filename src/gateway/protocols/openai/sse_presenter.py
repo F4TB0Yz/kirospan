@@ -4,7 +4,16 @@ import json
 import time
 import uuid
 
-from ...domain.events import Completed, StreamError, TextDelta, ThinkingDelta, ToolUseDelta, ToolUseStart, UsageReport
+from ...domain.events import (
+    Completed,
+    Refusal,
+    StreamError,
+    TextDelta,
+    ThinkingDelta,
+    ToolUseDelta,
+    ToolUseStart,
+    UsageReport,
+)
 
 
 def _chunk(completion_id: str, created: int, model_id: str, delta: dict, finish_reason=None) -> dict:
@@ -54,6 +63,11 @@ async def openai_stream(events, model_id: str):
         elif isinstance(event, StreamError):
             message = f"[Kiro error: {event.message}]"
             yield f"data: {json.dumps(_chunk(completion_id, created, model_id, {'content': message}))}\n\n"
+
+        elif isinstance(event, Refusal):
+            # Campo estándar de OpenAI para negativas; junto con
+            # finish_reason=content_filter el cliente no lo trata como vacío.
+            yield f"data: {json.dumps(_chunk(completion_id, created, model_id, {'refusal': event.explanation}))}\n\n"
 
         elif isinstance(event, Completed):
             final = _chunk(completion_id, created, model_id, {}, event.finish_reason)

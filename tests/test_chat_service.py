@@ -12,6 +12,7 @@ from gateway.application.chat import ChatService
 from gateway.domain.errors import UpstreamError
 from gateway.domain.events import (
     Completed,
+    Refusal,
     StreamError,
     TextDelta,
     ThinkingDelta,
@@ -272,6 +273,25 @@ class TestChatService:
         events = await collect(ChatService(_FakeRuntimeClient([])), access_token="t", state={})
         assert events == [Completed("stop")]
 
+    async def test_content_filtered_metadata_becomes_refusal(self):
+        raw = [
+            {"redactedContent": "blob"},
+            {
+                "stopDetails": {
+                    "refusal": {"category": "CYBER", "explanation": "No puedo seguir."}
+                },
+                "stopReason": "CONTENT_FILTERED",
+            },
+            {"contextUsagePercentage": 20.2},
+        ]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert events == [Refusal("No puedo seguir.", "CYBER"), Completed("content_filter")]
+
+    async def test_ordinary_stop_reason_metadata_is_ignored(self):
+        raw = [{"content": "hola"}, {"stopReason": "END_TURN"}]
+        events = await collect(ChatService(_FakeRuntimeClient(raw)), access_token="t", state={})
+        assert events == [TextDelta("hola"), Completed("stop")]
+
 
 async def _events_to_stream(events):
     for event in events:
@@ -320,8 +340,25 @@ class TestOpenAIStreamPresenter:
         payload = json.loads(lines[0].removeprefix("data: ").strip())
         assert "[Kiro error: Boom]" in payload["choices"][0]["delta"]["content"]
 
+    async def test_refusal_becomes_refusal_delta_and_content_filter(self):
+        lines = await self._lines([Refusal("No puedo.", "CYBER"), Completed("content_filter")])
+        first = json.loads(lines[0].removeprefix("data: ").strip())
+        final = json.loads(lines[-2].removeprefix("data: ").strip())
+        assert first["choices"][0]["delta"] == {"refusal": "No puedo."}
+        assert final["choices"][0]["finish_reason"] == "content_filter"
+
 
 class TestOpenAINonStreamPresenter:
+    async def test_refusal_is_exposed_on_the_message(self):
+        response = await openai_non_stream(
+            _events_to_stream([Refusal("No puedo."), Completed("content_filter")]),
+            "auto",
+        )
+        choice = response["choices"][0]
+        assert choice["finish_reason"] == "content_filter"
+        assert choice["message"]["refusal"] == "No puedo."
+        assert choice["message"]["content"] is None
+
     async def test_thinking_only_has_reasoning_and_null_content(self):
         response = await openai_non_stream(
             _events_to_stream([ThinkingDelta("plan"), Completed("stop")]),

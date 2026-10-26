@@ -36,16 +36,22 @@ def anthropic_response_from_openai(response: dict) -> dict:
         })
     if message.get("content"):
         content.append({"type": "text", "text": message["content"]})
+    elif message.get("refusal"):
+        content.append({"type": "text", "text": message["refusal"]})
     content.extend(_tool_use_block(tool_call) for tool_call in message.get("tool_calls") or [])
 
     usage = response.get("usage") or {}
+    stop_reason = {
+        "tool_calls": "tool_use",
+        "content_filter": "refusal",
+    }.get(choice.get("finish_reason"), "end_turn")
     return {
         "id": response.get("id", f"msg_{uuid.uuid4().hex[:24]}"),
         "type": "message",
         "role": "assistant",
         "model": response.get("model", ""),
         "content": content,
-        "stop_reason": "tool_use" if choice.get("finish_reason") == "tool_calls" else "end_turn",
+        "stop_reason": stop_reason,
         "stop_sequence": None,
         "usage": {
             "input_tokens": usage.get("prompt_tokens", 0),
