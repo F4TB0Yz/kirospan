@@ -353,7 +353,8 @@ class TestStateEnvelope:
         assert current["modelId"] == "claude-sonnet-5"
         assert current["origin"] == "KIRO_CLI"
 
-    def test_conversation_id_is_generated_when_absent(self):
+    def test_conversation_id_defaults_to_the_stable_process_id(self):
+        from gateway.domain.session import CONVERSATION_ID
+
         state = build_conversation_state("auto", [{"role": "user", "content": "x"}])
-        generated = conversation_of(state)["conversationId"]
-        assert len(generated) == 36 and generated != FIXED_ID
+        assert conversation_of(state)["conversationId"] == CONVERSATION_ID
