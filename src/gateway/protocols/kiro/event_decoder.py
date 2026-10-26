@@ -15,6 +15,9 @@ Solo la variante con `text` se propaga como thinking; la redactada se descarta.
 import json
 from typing import Optional
 
+CONTENT_FILTERED_STOP_REASONS = {"CONTENT_FILTERED", "REFUSAL", "GUARDRAIL_INTERVENED"}
+DEFAULT_REFUSAL_EXPLANATION = "The model declined to respond to this request."
+
 
 def _extract_reasoning(parsed: dict) -> dict | None:
     """Extrae reasoning envuelto o inferido por su estructura."""
@@ -49,6 +52,25 @@ def parse_kiro_event(parsed: dict) -> Optional[dict]:
     """Devuelve `{"type", "data"}` o `None` si el evento no interesa."""
     if not isinstance(parsed, dict):
         return None
+
+    # metadataEvent: motivo de parada del turno. Solo interesa el filtro de
+    # contenido; el resto de motivos ya se reflejan en los demás eventos.
+    if "stopReason" in parsed:
+        stop_reason = str(parsed.get("stopReason") or "").upper()
+        if stop_reason not in CONTENT_FILTERED_STOP_REASONS:
+            return None
+        details = parsed.get("stopDetails")
+        refusal = details.get("refusal") if isinstance(details, dict) else None
+        refusal = refusal if isinstance(refusal, dict) else {}
+        return {
+            "type": "refusal",
+            "data": {
+                "explanation": str(
+                    refusal.get("explanation") or DEFAULT_REFUSAL_EXPLANATION
+                ),
+                "category": str(refusal.get("category") or ""),
+            },
+        }
 
     # Reasoning/thinking — check first so it takes precedence
     reasoning = _extract_reasoning(parsed)

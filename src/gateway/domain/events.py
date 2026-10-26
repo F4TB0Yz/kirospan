@@ -12,7 +12,7 @@ construcción y comparables por valor sin código adicional.
 
 from typing import Literal, NamedTuple
 
-FinishReason = Literal["stop", "tool_calls"]
+FinishReason = Literal["stop", "tool_calls", "content_filter"]
 
 
 class ThinkingDelta(NamedTuple):
@@ -62,6 +62,17 @@ class StreamError(NamedTuple):
     message: str
 
 
+class Refusal(NamedTuple):
+    """El runtime cortó la respuesta por su filtro de contenido.
+
+    Kiro lo señala con un `metadataEvent` (`stopReason: CONTENT_FILTERED`)
+    en un stream HTTP 200; sin propagarlo, el cliente ve un turno vacío.
+    """
+
+    explanation: str
+    category: str = ""
+
+
 class Completed(NamedTuple):
     """Fin de la respuesta."""
 
@@ -69,5 +80,12 @@ class Completed(NamedTuple):
 
 
 AssistantEvent = (
-    ThinkingDelta | TextDelta | ToolUseStart | ToolUseDelta | UsageReport | StreamError | Completed
+    ThinkingDelta
+    | TextDelta
+    | ToolUseStart
+    | ToolUseDelta
+    | UsageReport
+    | StreamError
+    | Refusal
+    | Completed
 )
