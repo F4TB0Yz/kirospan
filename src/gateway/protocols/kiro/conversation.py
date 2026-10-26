@@ -18,6 +18,8 @@ contra el runtime:
 import json
 import uuid
 
+from ...domain.errors import AuthError
+from ...domain.session import CONVERSATION_ID
 from ...domain.images import extract_kiro_images, validate_kiro_image_count
 from .tools import add_placeholder_tools, convert_tools_to_kiro
 
@@ -281,7 +283,7 @@ def build_conversation_state(
     state = {
         "chatTriggerType": CHAT_TRIGGER_TYPE,
         "agentTaskType": AGENT_TASK_TYPE,
-        "conversationId": conversation_id or str(uuid.uuid4()),
+        "conversationId": conversation_id or CONVERSATION_ID,
         "currentMessage": {"userInputMessage": current_message},
     }
     if history:

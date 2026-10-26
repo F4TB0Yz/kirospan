@@ -23,6 +23,7 @@ from .....protocols.responses.presenter import (
     responses_stream,
 )
 from ..schemas import ResponsesRequest
+from ..sse_keepalive import sse_keep_alive
 from ._shared import resolve_profile_arn
 
 log = logging.getLogger("kirospan")
@@ -72,7 +73,7 @@ def build_responses_router(token_service, model_catalog, runtime_client_factory)
             chat_service = ChatService(runtime_client_factory())
             events = chat_service.run(access_token=access_token, state=state)
             return StreamingResponse(
-                responses_stream(events, req.model),
+                sse_keep_alive(responses_stream(events, req.model)),
                 media_type="text/event-stream",
                 headers=SSE_HEADERS,
             )

@@ -5,12 +5,16 @@ Concentra en un solo sitio los headers de la petición y el reintento tras un
 respuesta única, con el riesgo de divergir.
 """
 
+import asyncio
 import logging
+import os
+import uuid
 from typing import AsyncIterator
 
 import httpx
 
 from ...domain.errors import UpstreamError
+from ...domain.session import CONVERSATION_ID, KIRO_USER_AGENT, SESSION_ID
 from ...domain.token import access_token_of, profile_arn_of
 from .aws_eventstream import (
     EVENTSTREAM_EXCEPTION_KEY,
@@ -31,12 +35,31 @@ _TRANSIENT_MESSAGE_MARKERS = (
     "internal server error",
 )
 
+# Tope de requests simultáneas contra Kiro. Por defecto 1 (serializado) para no
+# parecer una cuenta compartida/distribuida. Subir con KIRO_MAX_CONCURRENT si se
+# necesita más pipelining, pero cada unidad extra aumenta la huella de concurrencia.
+_MAX_CONCURRENT = int(os.environ.get("KIRO_MAX_CONCURRENT", "1"))
+_concurrency_sem = asyncio.Semaphore(_MAX_CONCURRENT)
+
+# IDs estables de sesión — importados de domain/session.py para que runtime y
+# conversation builder compartan la misma identidad.
+
 RUNTIME_HEADERS = {
     "Content-Type": "application/json",
     "Accept": "application/vnd.amazon.eventstream",
+    "User-Agent": KIRO_USER_AGENT,
     "x-amzn-codewhisperer-optout": "true",
     "x-amzn-kiro-agent-mode": "vibe",
+    "x-amzn-sessionid": SESSION_ID,
 }
+
+
+def _new_xray_trace_id() -> str:
+    """Genera un trace ID con formato AWS X-Ray: Root=1-<8hex time>-<24hex random>."""
+    import time
+    ts = int(time.time()) & 0xFFFFFFFF
+    rand = uuid.uuid4().hex + uuid.uuid4().hex[:12]
+    return f"Root=1-{ts:08x}-{rand}"
 
 log = logging.getLogger("kirospan")
 
@@ -68,7 +91,8 @@ class HttpKiroRuntimeClient:
         self._token_service = token_service
 
     def _headers(self, access_token: str) -> dict:
-        return {"Authorization": f"Bearer {access_token}", **RUNTIME_HEADERS}
+        return {"Authorization": f"Bearer {access_token}", **RUNTIME_HEADERS,
+                "x-amzn-trace-id": _new_xray_trace_id()}
 
     async def stream(
         self,
@@ -77,7 +101,31 @@ class HttpKiroRuntimeClient:
         state: dict,
         _auth_retry: bool = False,
     ) -> AsyncIterator[dict]:
-        """Emite los payloads del EventStream, renovando el token ante un 403."""
+        """Emite los payloads del EventStream, renovando el token ante un 403.
+
+        Serializa las llamadas contra Kiro tras un semáforo global para no
+        disparar múltiples inferencias simultáneas desde la misma cuenta
+        (patrón que AWS interpreta como cuenta compartida/automatizada).
+        """
+        async with _concurrency_sem:
+            async for event in self._stream_locked(
+                access_token=access_token, state=state, _auth_retry=_auth_retry
+            ):
+                yield event
+
+    async def _stream_locked(
+        self,
+        *,
+        access_token: str,
+        state: dict,
+        _auth_retry: bool = False,
+    ) -> AsyncIterator[dict]:
+        # Forzar conversationId estable: el gateway anterior generaba un UUID
+        # nuevo por request (miles de conversaciones de 1 mensaje = bandera de
+        # automatización). Reutilizamos el conversationId del proceso.
+        conversation = state.setdefault("conversationState", {})
+        if "conversationId" not in conversation:
+            conversation["conversationId"] = CONVERSATION_ID
         try:
             async with self._client.stream(
                 "POST",
@@ -141,10 +189,15 @@ class HttpKiroRuntimeClient:
                     return
 
                 request_id = _request_id_of(response)
+                try:
+                    _err_body = response.content.decode("utf-8", "replace")[:2000]
+                except Exception:
+                    _err_body = "<unreadable>"
                 log.error(
-                    "Kiro runtime HTTP %s request_id=%s",
+                    "Kiro runtime HTTP %s request_id=%s body=%s",
                     response.status_code,
                     request_id or "unknown",
+                    _err_body,
                 )
                 raise UpstreamError(
                     f"Kiro runtime request failed with HTTP {response.status_code}",
@@ -163,7 +216,7 @@ class HttpKiroRuntimeClient:
         profile_arn = profile_arn_of(refreshed)
         if profile_arn:
             state["profileArn"] = profile_arn
-        async for event in self.stream(
+        async for event in self._stream_locked(
             access_token=access_token_of(refreshed), state=state, _auth_retry=True
         ):
             yield event
