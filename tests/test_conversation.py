@@ -335,10 +335,45 @@ class TestImages:
         assert "images" not in current_of(state)
         assert "images" not in history_of(state)[0]["userInputMessage"]
 
-    def test_too_many_images_are_rejected(self):
+    def test_too_many_images_are_trimmed_to_the_newest(self):
         blocks = [{"type": "image_url", "image_url": {"url": PNG_DATA_URL}} for _ in range(11)]
-        with pytest.raises(InvalidRequest, match="at most 10 images"):
-            build([{"role": "user", "content": blocks}])
+        state = build([{"role": "user", "content": blocks}])
+        assert len(current_of(state)["images"]) == 10
+
+    def test_tool_result_image_is_hoisted_to_the_current_message(self):
+        """La imagen de un `tool_result` va al `userInputMessage`, nunca al resultado.
+
+        Kiro responde 400 si `toolResult.content` lleva un bloque `image`, y el
+        turno muere. Claude Code devuelve las imágenes de `Read` así, de modo que
+        subirlas al mensaje del turno es la única forma de que el modelo las vea.
+        """
+        state = build(
+            [
+                {"role": "user", "content": "lee la foto"},
+                {
+                    "role": "assistant",
+                    "content": "voy a leerla",
+                    "tool_calls": [
+                        {"id": "t1", "function": {"name": "Read", "arguments": "{}"}}
+                    ],
+                },
+                {
+                    "role": "tool",
+                    "tool_call_id": "t1",
+                    "content": [
+                        {"type": "text", "text": "foto leida"},
+                        {
+                            "type": "image",
+                            "source": {"media_type": "image/png", "data": "aGVsbG8="},
+                        },
+                    ],
+                },
+            ]
+        )
+        current = current_of(state)
+        assert [image["format"] for image in current["images"]] == ["png"]
+        results = current["userInputMessageContext"]["toolResults"]
+        assert all(set(block) == {"text"} for result in results for block in result["content"])
 
 
 class TestStateEnvelope:
