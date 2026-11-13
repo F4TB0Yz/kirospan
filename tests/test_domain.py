@@ -161,11 +161,14 @@ class TestImages:
     def test_plain_text_content_yields_no_images(self):
         assert extract_kiro_images({"content": "solo texto"}) == []
 
-    def test_image_count_cap(self):
-        images = [{"format": "png"}] * KIRO_MAX_IMAGES
+    def test_image_count_cap_keeps_the_newest(self):
+        images = [{"format": "png", "i": n} for n in range(KIRO_MAX_IMAGES)]
         assert validate_kiro_image_count(images) == images
-        with pytest.raises(InvalidRequest, match="at most 10 images"):
-            validate_kiro_image_count(images + [{"format": "png"}])
+        extra = validate_kiro_image_count(images + [{"format": "png", "i": KIRO_MAX_IMAGES}])
+        assert len(extra) == KIRO_MAX_IMAGES
+        # Se descartan las más viejas: sobrevive la última, no la primera.
+        assert extra[-1]["i"] == KIRO_MAX_IMAGES
+        assert extra[0]["i"] == 1
 
     def test_invalid_request_is_a_value_error(self):
         # La capa HTTP traduce ValueError a 400 y los tests legacy dependen de ello.
