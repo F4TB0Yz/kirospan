@@ -16,12 +16,16 @@ contra el runtime:
 """
 
 import json
+import logging
 import uuid
 
 from ...domain.errors import AuthError
+from ...domain.payload_budget import enforce_payload_budget, payload_units
 from ...domain.session import CONVERSATION_ID
 from ...domain.images import extract_kiro_images, validate_kiro_image_count
 from .tools import add_placeholder_tools, convert_tools_to_kiro
+
+log = logging.getLogger("kirospan")
 
 ORIGIN = "KIRO_CLI"
 CHAT_TRIGGER_TYPE = "MANUAL"
@@ -297,4 +301,22 @@ def build_conversation_state(
     }
     if history:
         state["history"] = history
+
+    # El runtime rechaza con HTTP 400 CONTENT_LENGTH_EXCEEDS_THRESHOLD cuando el
+    # contenido más el overhead por mensaje pasa de ~1 MB. Se recorta aquí, en
+    # el único sitio por el que pasan las tres rutas, para que el 400 opaco de
+    # Kiro no llegue nunca al cliente.
+    payload = {"conversationState": state}
+    before = payload_units(payload)
+    dropped = enforce_payload_budget(payload, model_id=model_id)
+    if dropped:
+        log.warning(
+            "Kiro payload trimmed model=%s dropped_turns=%d units_before=%d units_after=%d",
+            model_id,
+            dropped,
+            before,
+            payload_units(payload),
+        )
+    state = payload["conversationState"]
+
     return {"conversationState": state}
