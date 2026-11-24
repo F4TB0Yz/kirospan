@@ -78,8 +78,6 @@ def build_continuation_state(state: dict, assistant_text: str) -> dict:
         conversation["currentMessage"] = previous_current
         return continued
 
-    previous_user.pop("images", None)
-
     previous_context = previous_user.get("userInputMessageContext") or {}
     tools = previous_context.pop("tools", None)
     if previous_context:

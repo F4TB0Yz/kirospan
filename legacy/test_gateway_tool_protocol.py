@@ -237,7 +237,7 @@ class ConversationStateTests(unittest.TestCase):
             "source": {"bytes": "UklGRg=="},
         }])
 
-    def test_images_are_not_repeated_in_kiro_history(self):
+    def test_images_stay_in_their_kiro_history_turn(self):
         state = _build_conversation_state(
             "gpt-5.6-sol",
             [
@@ -250,7 +250,10 @@ class ConversationStateTests(unittest.TestCase):
             ],
         )["conversationState"]
 
-        self.assertNotIn("images", state["history"][0]["userInputMessage"])
+        self.assertEqual(
+            [image["format"] for image in state["history"][0]["userInputMessage"]["images"]],
+            ["png"],
+        )
         self.assertNotIn("images", state["currentMessage"]["userInputMessage"])
 
     def test_remote_image_url_is_rejected_instead_of_fetched(self):

@@ -10,6 +10,7 @@ from gateway.domain.errors import InvalidRequest
 from gateway.protocols.kiro.conversation import (
     DEFAULT_GREETING,
     IMAGE_ONLY_CONTENT,
+    IMAGE_OMITTED_NOTE,
     PROCEED_PROMPT,
     TOOL_CONTINUATION_PROMPT,
     TOOL_RESULTS_NOTE,
@@ -323,7 +324,8 @@ class TestImages:
         ])
         assert current_of(state)["content"] == IMAGE_ONLY_CONTENT
 
-    def test_history_images_are_not_repeated(self):
+    def test_history_images_stay_in_their_turn(self):
+        """Kiro acepta `images` en el historial (verificado contra el runtime)."""
         state = build([
             {
                 "role": "user",
@@ -333,6 +335,52 @@ class TestImages:
             {"role": "user", "content": "gracias"},
         ])
         assert "images" not in current_of(state)
+        assert [i["format"] for i in history_of(state)[0]["userInputMessage"]["images"]] == ["png"]
+
+    def test_history_tool_result_images_are_kept(self):
+        state = build([
+            {"role": "user", "content": "lee la captura"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "t1", "type": "function",
+                                "function": {"name": "read", "arguments": "{}"}}],
+            },
+            {
+                "role": "tool",
+                "tool_call_id": "t1",
+                "content": [{"type": "image", "source": {"media_type": "image/png",
+                                                         "data": "aGVsbG8="}}],
+            },
+            {"role": "assistant", "content": "veo un png"},
+            {"role": "user", "content": "¿de qué color era?"},
+        ])
+        images = [
+            image
+            for entry in history_of(state)
+            for image in (entry.get("userInputMessage") or {}).get("images", [])
+        ]
+        assert [i["format"] for i in images] == ["png"]
+
+    def test_history_images_share_the_request_cap_with_the_current_turn(self):
+        image = {"type": "image_url", "image_url": {"url": PNG_DATA_URL}}
+        state = build([
+            {"role": "user", "content": [image] * 4},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": [image] * 8},
+        ])
+        old = history_of(state)[0]["userInputMessage"]
+        assert len(current_of(state)["images"]) == 8
+        assert len(old["images"]) == 2
+        assert IMAGE_OMITTED_NOTE in old["content"]
+
+    def test_invalid_history_image_is_ignored(self):
+        state = build([
+            {"role": "user", "content": [{"type": "image_url",
+                                          "image_url": {"url": "https://x/y.png"}}]},
+            {"role": "assistant", "content": "ok"},
+            {"role": "user", "content": "sigue"},
+        ])
         assert "images" not in history_of(state)[0]["userInputMessage"]
 
     def test_too_many_images_are_trimmed_to_the_newest(self):

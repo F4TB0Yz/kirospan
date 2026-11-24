@@ -1,0 +1,20 @@
+#!/bin/sh
+# Lanzador local usado por Fasterver: arranca el gateway desde este repo con
+# su propio venv. La clave vive en gateway.key (ignorado por git).
+set -eu
+here=$(cd "$(dirname "$0")" && pwd)
+key_file="$here/gateway.key"
+if [ ! -r "$key_file" ]; then
+    echo "KiroSpan key file missing or unreadable: $key_file" >&2
+    exit 2
+fi
+IFS= read -r KIRO_GATEWAY_KEY < "$key_file"
+if [ -z "$KIRO_GATEWAY_KEY" ]; then
+    echo "KiroSpan key file is empty: $key_file" >&2
+    exit 2
+fi
+export KIRO_GATEWAY_KEY
+export KIRO_GATEWAY_HOST=127.0.0.1
+export KIRO_GATEWAY_PORT=18789
+export KIRO_MAX_CONCURRENT=1
+exec "$here/venv/bin/kirospan"

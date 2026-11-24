@@ -416,8 +416,8 @@ class TestContinuation:
         assert current["userInputMessageContext"]["tools"] == [
             {"toolSpecification": {"name": "f"}}
         ]
-        # Las imágenes no se repiten en el historial.
-        assert "images" not in conversation["history"][0]["userInputMessage"]
+        # Las imágenes siguen en su turno para que el modelo las vea al continuar.
+        assert conversation["history"][0]["userInputMessage"]["images"] == [{"format": "png"}]
         # El estado original no se muta.
         assert state["conversationState"]["currentMessage"]["userInputMessage"]["content"] == (
             "resultado"
