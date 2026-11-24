@@ -4,10 +4,10 @@ import logging
 from datetime import datetime, timedelta, timezone
 
 from ...domain.errors import AuthError
+from ...domain.session import KIRO_USER_AGENT
 from ...domain.token import refresh_token_of
 
 DEFAULT_EXPIRES_IN_SECONDS = 3600
-USER_AGENT = "kirospan"
 
 log = logging.getLogger("kirospan")
 
@@ -32,7 +32,7 @@ class DesktopTokenRefresher:
         region = token.get("region") or self._config.region
         response = await self._client.post(
             self._config.refresh_url(region),
-            headers={"Content-Type": "application/json", "User-Agent": USER_AGENT},
+            headers={"Content-Type": "application/json", "User-Agent": KIRO_USER_AGENT},
             json={"refreshToken": refresh_token},
         )
         if response.status_code != 200:

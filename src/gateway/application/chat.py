@@ -30,6 +30,7 @@ from ..domain.errors import UpstreamError
 from ..domain.events import (
     AssistantEvent,
     Completed,
+    Refusal,
     StreamError,
     TextDelta,
     ThinkingDelta,
@@ -75,6 +76,7 @@ class ChatService:
         emitted_committed_output = False
         thinking_events = 0
         thinking_chars = 0
+        refusal: Refusal | None = None
         attempt = 1
 
         while True:
@@ -161,6 +163,19 @@ class ChatService:
                             or "Unknown Kiro stream error"
                         )
                         yield StreamError(str(message))
+
+                    elif event_type == "refusal":
+                        for thinking in pending_thinking:
+                            yield thinking
+                        pending_thinking.clear()
+                        emitted_committed_output = True
+                        refusal = Refusal(data["explanation"], data.get("category", ""))
+                        log.warning(
+                            "Kiro content filter stopped the turn model=%s category=%s",
+                            _model_id_of(state),
+                            refusal.category or "unknown",
+                        )
+                        yield refusal
                 for thinking in pending_thinking:
                     yield thinking
                 break
@@ -189,7 +204,10 @@ class ChatService:
                 yield Completed(finish_reason)
                 return
 
-        finish_reason = "tool_calls" if saw_tool_use else "stop"
+        if refusal is not None:
+            finish_reason = "content_filter"
+        else:
+            finish_reason = "tool_calls" if saw_tool_use else "stop"
         yield Completed(finish_reason)
         if thinking_events:
             log.info(

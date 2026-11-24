@@ -46,5 +46,6 @@ asyncio_mode = "auto"
 addopts = "-q --strict-markers"
 markers = [
     "e2e: requires a running gateway and real Kiro credentials",
+    "slow: long-running tests (stream stability, large payloads)",
     "upstream: performs requests against the Kiro runtime",
 ]

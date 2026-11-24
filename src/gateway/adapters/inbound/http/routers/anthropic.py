@@ -23,6 +23,7 @@ from .....protocols.openai.non_stream_presenter import openai_non_stream
 from .....protocols.openai.sse_presenter import openai_stream
 from .....domain.images import extract_kiro_images
 from ..schemas import AnthropicRequest
+from ..sse_keepalive import sse_keep_alive
 from ._shared import resolve_profile_arn
 
 log = logging.getLogger("kirospan")
@@ -85,7 +86,7 @@ def build_anthropic_router(token_service, model_catalog, runtime_client_factory)
                     yield line
 
             return StreamingResponse(
-                anthropic_stream_presenter(stream_runtime, None, access_token, state, req.model),
+                sse_keep_alive(anthropic_stream_presenter(stream_runtime, None, access_token, state, req.model)),
                 media_type="text/event-stream",
                 headers=SSE_HEADERS,
             )

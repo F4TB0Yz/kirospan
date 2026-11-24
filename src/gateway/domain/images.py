@@ -93,6 +93,12 @@ def extract_kiro_images(message: dict) -> list[dict]:
 
 
 def validate_kiro_image_count(images: list[dict]) -> list[dict]:
-    if len(images) > KIRO_MAX_IMAGES:
-        raise InvalidRequest("A request can include at most 10 images.")
-    return images
+    """Recorta a las últimas `KIRO_MAX_IMAGES` en lugar de rechazar la petición.
+
+    Claude Code agrupa en el turno actual todo `tool_result` que devuelva una
+    imagen, así que una tanda de lecturas en paralelo supera las 10 fácilmente
+    y antes tumbaba el turno entero con un 400. Kiro sí impone ese tope, pero
+    las imágenes más recientes son las que el modelo necesita: se descartan las
+    más viejas y el turno sigue.
+    """
+    return images[-KIRO_MAX_IMAGES:] if len(images) > KIRO_MAX_IMAGES else images

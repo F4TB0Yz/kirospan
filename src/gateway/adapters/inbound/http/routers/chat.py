@@ -16,6 +16,7 @@ from .....protocols.kiro.reasoning import (
 from .....protocols.openai.non_stream_presenter import openai_non_stream
 from .....protocols.openai.sse_presenter import openai_stream
 from ..schemas import ChatRequest
+from ..sse_keepalive import sse_keep_alive
 from ._shared import resolve_profile_arn
 
 log = logging.getLogger("kirospan")
@@ -58,7 +59,7 @@ def build_chat_router(token_service, model_catalog, runtime_client_factory) -> A
         if req.stream:
             events = chat_service.run(access_token=access_token, state=state)
             return StreamingResponse(
-                openai_stream(events, req.model),
+                sse_keep_alive(openai_stream(events, req.model)),
                 media_type="text/event-stream",
                 headers=SSE_HEADERS,
             )

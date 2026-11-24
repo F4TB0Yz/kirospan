@@ -18,6 +18,8 @@ contra el runtime:
 import json
 import uuid
 
+from ...domain.errors import AuthError
+from ...domain.session import CONVERSATION_ID
 from ...domain.images import extract_kiro_images, validate_kiro_image_count
 from .tools import add_placeholder_tools, convert_tools_to_kiro
 
@@ -85,7 +87,13 @@ def assistant_response(message: dict) -> dict:
 
 
 def tool_result(message: dict) -> dict:
-    """Traduce un mensaje con rol `tool` a un `toolResult` de Kiro."""
+    """Traduce un mensaje con rol `tool` a un `toolResult` de Kiro.
+
+    Kiro no admite imágenes dentro de `toolResult` (responde 400 al schema), así
+    que aquí solo viaja el texto; las imágenes del resultado las sube
+    `build_conversation_state` al `userInputMessage` del turno, que es el único
+    sitio del protocolo donde se aceptan.
+    """
     return {
         "content": [{"text": content_text(message)}],
         "status": "error" if message.get("is_error") else "success",
@@ -253,13 +261,16 @@ def build_conversation_state(
         current_messages, history, effective_system, system_prepended
     )
 
-    current_images = validate_kiro_image_count([
+    # Las imágenes de los `toolResults` del turno no pueden viajar dentro de cada
+    # resultado (Kiro responde 400 al schema), así que se suben al
+    # `userInputMessage` del turno, único sitio del protocolo donde las acepta.
+    message_images = validate_kiro_image_count([
         image
         for message in current_messages
         if message.get("role") in {"user", "tool"}
         for image in extract_kiro_images(message)
     ])
-    if current_images and not current_content.strip():
+    if message_images and not current_content.strip():
         current_content = IMAGE_ONLY_CONTENT
 
     if enforce_tool_continuation and current_tool_results:
@@ -273,15 +284,15 @@ def build_conversation_state(
         context["tools"] = final_tools
 
     current_message = _user_input_message(current_content, model_id)
-    if current_images:
-        current_message["images"] = current_images
+    if message_images:
+        current_message["images"] = message_images
     if context:
         current_message["userInputMessageContext"] = context
 
     state = {
         "chatTriggerType": CHAT_TRIGGER_TYPE,
         "agentTaskType": AGENT_TASK_TYPE,
-        "conversationId": conversation_id or str(uuid.uuid4()),
+        "conversationId": conversation_id or CONVERSATION_ID,
         "currentMessage": {"userInputMessage": current_message},
     }
     if history:

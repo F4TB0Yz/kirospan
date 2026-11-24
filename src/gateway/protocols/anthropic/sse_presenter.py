@@ -122,6 +122,11 @@ async def _run_one_call(stream_runtime, client, access_token, state, model_id, n
         choice = (payload.get("choices") or [{}])[0]
         delta = choice.get("delta") or {}
 
+        if delta.get("refusal"):
+            # Anthropic no tiene delta de negativa: se expone como texto y el
+            # stop_reason final pasa a `refusal`.
+            delta = {**delta, "content": str(delta["refusal"])}
+
         if delta.get("reasoning_content") is not None:
             for frame in close_active() if active_kind != "thinking" else []:
                 yield "frame", frame
@@ -293,7 +298,10 @@ async def anthropic_stream_presenter(stream_runtime, client, access_token, state
     for block_index in sorted(all_open_blocks):
         yield anthropic_sse("content_block_stop", {"type": "content_block_stop", "index": block_index})
 
-    stop_reason = "tool_use" if final_finish_reason == "tool_calls" else "end_turn"
+    stop_reason = {
+        "tool_calls": "tool_use",
+        "content_filter": "refusal",
+    }.get(final_finish_reason, "end_turn")
     yield anthropic_sse("message_delta", {
         "type": "message_delta",
         "delta": {"stop_reason": stop_reason, "stop_sequence": None},
