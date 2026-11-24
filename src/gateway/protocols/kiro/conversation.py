@@ -19,10 +19,10 @@ import json
 import logging
 import uuid
 
-from ...domain.errors import AuthError
+from ...domain.errors import AuthError, InvalidRequest
 from ...domain.payload_budget import enforce_payload_budget, payload_units
 from ...domain.session import CONVERSATION_ID
-from ...domain.images import extract_kiro_images, validate_kiro_image_count
+from ...domain.images import KIRO_MAX_IMAGES, extract_kiro_images, validate_kiro_image_count
 from .tools import add_placeholder_tools, convert_tools_to_kiro
 
 log = logging.getLogger("kirospan")
@@ -35,6 +35,7 @@ DEFAULT_GREETING = "Hello"
 TOOL_RESULTS_NOTE = "Tool results provided."
 PROCEED_PROMPT = "Please proceed with the task."
 IMAGE_ONLY_CONTENT = "Image provided."
+IMAGE_OMITTED_NOTE = "[Earlier image omitted: Kiro accepts at most 10 images per request.]"
 
 TOOL_CONTINUATION_PROMPT = (
     "Continue executing the user's task now. "
@@ -141,26 +142,79 @@ def _last_user_message(history: list[dict]) -> dict | None:
     return history[-1].get("userInputMessage") if history else None
 
 
-def _append_user(history: list[dict], content: str, model_id: str) -> None:
+def _history_images(message: dict) -> list[dict]:
+    """Imágenes de un mensaje del historial.
+
+    Una imagen inválida en un turno viejo no debe tumbar la conversación: antes
+    el historial ni siquiera las leía, así que se ignoran en vez de dar un 400.
+    """
+    try:
+        return extract_kiro_images(message)
+    except InvalidRequest:
+        return []
+
+
+def _attach_images(user_message: dict, images: list[dict]) -> None:
+    if images:
+        user_message.setdefault("images", []).extend(images)
+
+
+def _append_user(
+    history: list[dict], content: str, model_id: str, images: list[dict] | None = None
+) -> None:
     """Añade un turno de usuario, fusionándolo con el anterior si lo hubiera."""
     previous = _last_user_message(history)
-    if previous is not None:
-        previous["content"] += f"\n\n{content}"
+    if previous is None:
+        previous = _user_input_message(content, model_id)
+        history.append({"userInputMessage": previous})
     else:
-        history.append({"userInputMessage": _user_input_message(content, model_id)})
+        previous["content"] += f"\n\n{content}"
+    _attach_images(previous, images or [])
 
 
-def _append_tool_results(history: list[dict], results: list[dict], model_id: str) -> None:
-    """Cuelga los resultados del turno de usuario anterior, o crea uno."""
+def _append_tool_results(
+    history: list[dict], results: list[dict], model_id: str, images: list[dict] | None = None
+) -> None:
+    """Cuelga los resultados del turno de usuario anterior, o crea uno.
+
+    Las imágenes de los `tool_result` viajan en el `userInputMessage`, igual
+    que en el turno actual: Kiro rechaza imágenes dentro de `toolResults`.
+    """
     previous = _last_user_message(history)
     if previous is not None:
         previous["content"] += f"\n\n{TOOL_RESULTS_NOTE}"
         context = previous.setdefault("userInputMessageContext", {})
         context.setdefault("toolResults", []).extend(results)
-        return
-    message = _user_input_message(TOOL_RESULTS_NOTE, model_id)
-    message["userInputMessageContext"] = {"toolResults": results}
-    history.append({"userInputMessage": message})
+    else:
+        previous = _user_input_message(TOOL_RESULTS_NOTE, model_id)
+        previous["userInputMessageContext"] = {"toolResults": results}
+        history.append({"userInputMessage": previous})
+    _attach_images(previous, images or [])
+
+
+def _cap_history_images(history: list[dict], budget: int) -> None:
+    """Deja en el historial solo las `budget` imágenes más recientes.
+
+    El tope de Kiro es por petición, no por mensaje, y las del turno actual ya
+    consumieron su parte. Donde se quitan imágenes se deja una nota para que el
+    modelo sepa que existían.
+    """
+    remaining = max(0, budget)
+    for entry in reversed(history):
+        message = entry.get("userInputMessage")
+        if not isinstance(message, dict) or not message.get("images"):
+            continue
+        images = message["images"]
+        if len(images) <= remaining:
+            remaining -= len(images)
+            continue
+        kept = images[len(images) - remaining:] if remaining else []
+        remaining = 0
+        if kept:
+            message["images"] = kept
+        else:
+            message.pop("images")
+        message["content"] = f"{message['content']}\n\n{IMAGE_OMITTED_NOTE}"
 
 
 def _build_history(
@@ -182,7 +236,7 @@ def _build_history(
             if effective_system and not system_prepended:
                 content = f"{effective_system}\n\n{content}"
                 system_prepended = True
-            _append_user(history, content, model_id)
+            _append_user(history, content, model_id, _history_images(message))
 
         elif role == "assistant":
             response = assistant_response(message)
@@ -191,12 +245,14 @@ def _build_history(
 
         elif role == "tool":
             results = [tool_result(message)]
+            images = _history_images(message)
             next_index = index + 1
             while next_index < len(messages) and messages[next_index].get("role") == "tool":
                 results.append(tool_result(messages[next_index]))
+                images.extend(_history_images(messages[next_index]))
                 next_index += 1
             index = next_index - 1
-            _append_tool_results(history, results, model_id)
+            _append_tool_results(history, results, model_id, images)
 
         index += 1
 
@@ -274,6 +330,7 @@ def build_conversation_state(
         if message.get("role") in {"user", "tool"}
         for image in extract_kiro_images(message)
     ])
+    _cap_history_images(history, KIRO_MAX_IMAGES - len(message_images))
     if message_images and not current_content.strip():
         current_content = IMAGE_ONLY_CONTENT
 
@@ -320,3 +377,4 @@ def build_conversation_state(
     state = payload["conversationState"]
 
     return {"conversationState": state}
+
