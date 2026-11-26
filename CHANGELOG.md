@@ -2,6 +2,13 @@
 
 All notable public changes to KiroSpan are documented here.
 
+## [1.1.1](https://github.com/F4TB0Yz/kirospan/compare/v1.1.0...v1.1.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* conservar las imágenes en el historial enviado a Kiro ([#19](https://github.com/F4TB0Yz/kirospan/issues/19)) ([ae687e0](https://github.com/F4TB0Yz/kirospan/commit/ae687e02ae49cb7dfc80362ae7484466b7a43764))
+
 ## [1.1.0](https://github.com/F4TB0Yz/kirospan/compare/v1.0.0...v1.1.0) (2026-11-24)
 
 
